@@ -104,11 +104,11 @@ export default function ChatDetailPage() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
+    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
       {/* Container for centered content */}
-      <div className="flex flex-col h-full max-w-3xl mx-auto w-full">
+      <div className="flex flex-col h-full max-w-3xl mx-auto w-full relative">
         {/* Message list */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 p-4 pb-[120px]">
           {messages.map((msg) => (
             <div
               key={msg.id}
@@ -126,19 +126,23 @@ export default function ChatDetailPage() {
         </div>
 
         {/* Input box - fixed at bottom */}
-        <Textarea
-          placeholder="Type your message..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
-          className="resize-none bg-background-main min-h-[90px] max-h-[200px] rounded-xl w-full border mb-4 focus:ring-0 p-4 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.1)] hover:shadow-[0_4px_16px_-4px_rgba(0,0,0,0.15)] transition-shadow"
-          rows={1}
-        />
+        <div className="fixed bottom-0 left-0 right-0">
+          <div className="max-w-3xl mx-auto w-full px-4">
+            <Textarea
+              placeholder="Type your message..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              className="resize-none bg-background-main min-h-[90px] max-h-[200px] rounded-t-xl w-full border focus:ring-0 p-4 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.1)] hover:shadow-[0_4px_16px_-4px_rgba(0,0,0,0.15)] transition-shadow"
+              rows={1}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );
