@@ -136,7 +136,7 @@ export default function ChatDetailPage() {
               handleSend();
             }
           }}
-          className="resize-none bg-background-main min-h-[90px] max-h-[200px] rounded-xl w-full border mb-4 focus:ring-0 p-4"
+          className="resize-none bg-background-main min-h-[90px] max-h-[200px] rounded-xl w-full border mb-4 focus:ring-0 p-4 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.1)] hover:shadow-[0_4px_16px_-4px_rgba(0,0,0,0.15)] transition-shadow"
           rows={1}
         />
       </div>
