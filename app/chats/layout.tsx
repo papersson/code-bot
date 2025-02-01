@@ -106,7 +106,7 @@ export default function ChatsLayout({ children }: { children: React.ReactNode })
 
   // Drag/Drop
   function onDragStartChat(e: React.DragEvent<HTMLDivElement>, chat: Chat) {
-    // Transfer the chat’s ID so we know which chat we’re dropping
+    // Transfer the chat's ID so we know which chat we're dropping
     e.dataTransfer.setData("text/plain", String(chat.id));
   }
   function onDragOverProject(e: React.DragEvent<HTMLDivElement>) {
@@ -118,7 +118,7 @@ export default function ChatsLayout({ children }: { children: React.ReactNode })
     const chatId = Number(chatIdStr);
     if (!chatId) return;
 
-    // Update that chat’s projectId
+    // Update that chat's projectId
     const now = new Date();
     await db.chats.update(chatId, { projectId, updatedAt: now });
 
@@ -178,9 +178,9 @@ export default function ChatsLayout({ children }: { children: React.ReactNode })
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-full w-full overflow-hidden bg-secondary">
       {/* Sidebar */}
-      <aside className="w-72 bg-secondary text-secondary-foreground p-4 border-r border-border flex flex-col">
+      <aside className="w-72 bg-secondary text-secondary-foreground p-4 flex flex-col overflow-y-auto">
         <h2 className="font-bold mb-2 text-sm">Chats</h2>
 
         {/* Recent (unassigned) Chats */}
@@ -257,7 +257,7 @@ export default function ChatsLayout({ children }: { children: React.ReactNode })
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Create a new project</DialogTitle>
-                <DialogDescription>Give it a name, e.g. “Mobile App.”</DialogDescription>
+                <DialogDescription>Give it a name, e.g. "Mobile App."</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <Input
@@ -360,7 +360,11 @@ export default function ChatsLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1">{children}</main>
+      <main className="flex-1 rounded-xl border border-zinc-200 bg-main-background mt-2 ml-0 mr-2 mb-1">
+        <div className="h-full overflow-y-auto rounded-xl">
+          {children}
+        </div>
+      </main>
     </div>
   );
 }

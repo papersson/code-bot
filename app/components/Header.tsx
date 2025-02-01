@@ -6,7 +6,7 @@ export default function Header() {
   const { data: session } = useSession();
 
   return (
-    <header className="w-full flex items-center justify-between px-4 py-2 bg-gray-100">
+    <header className="w-full flex items-center justify-between px-4 py-2 bg-secondary">
       <div className="font-bold">Local-First Chatbot</div>
       <div>
         {session ? (

@@ -7,6 +7,7 @@ import { db, ChatMessage, Chat, Project } from "@/db/dexie";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 
 export default function ChatDetailPage() {
   const { data: session } = useSession();
@@ -103,57 +104,41 @@ export default function ChatDetailPage() {
   }
 
   return (
-    <div className="p-4 flex flex-col h-full max-h-screen">
-      {/* Header row: Chat title & project selection */}
-      <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <h1 className="text-2xl font-bold">
-          {chat.name || `Chat #${chat.id}`}
-        </h1>
-
-        <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Project:</label>
-          <Select value={selectedProjectId?.toString() ?? "null"} onValueChange={handleProjectSelect}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="No project" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="null">No project</SelectItem>
-              {projects.map((p) => (
-                <SelectItem key={p.id} value={p.id?.toString() ?? ""}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* Message list */}
-      <div className="border rounded p-4 mb-4 flex-1 overflow-y-auto">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`mb-3 ${
-              msg.sender === "bot" ? "text-blue-600" : "text-gray-800"
-            }`}
-          >
-            <div className="font-semibold">{msg.sender === "bot" ? "Bot" : "You"}</div>
-            <div>{msg.content}</div>
-            <div className="text-xs text-gray-500 mt-1">
-              {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ""}
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
+      {/* Container for centered content */}
+      <div className="flex flex-col h-full max-w-3xl mx-auto w-full">
+        {/* Message list */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`mb-3 ${
+                msg.sender === "bot" ? "text-blue-600" : "text-gray-800"
+              }`}
+            >
+              <div className="font-semibold">{msg.sender === "bot" ? "Bot" : "You"}</div>
+              <div>{msg.content}</div>
+              <div className="text-xs text-gray-500 mt-1">
+                {msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString() : ""}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
 
-      {/* Input box */}
-      <div className="flex space-x-2">
-        <Input
+        {/* Input box - fixed at bottom */}
+        <Textarea
           placeholder="Type your message..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          className="resize-none bg-background-main min-h-[90px] max-h-[200px] rounded-xl w-full border mb-4 focus:ring-0 p-4"
+          rows={1}
         />
-        <Button onClick={handleSend}>Send</Button>
       </div>
     </div>
   );
