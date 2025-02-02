@@ -149,6 +149,12 @@ export default function ChatInterface({
   async function handleSend() {
     const content = input.trim();
     if (!content) return;
+    
+    // Wrap XML-like content in a code block
+    const processedContent = content.includes('<') || content.includes('>')
+      ? `\`\`\`xml\n${content}\n\`\`\``
+      : content;
+    
     setInput("");
 
     let currentChatId = chatId;
@@ -262,7 +268,7 @@ export default function ChatInterface({
   }
 
   // Add this new component for message rendering
-  function MessageContent({ content, pending }: { content: string; pending?: boolean }) {
+  function MessageContent({ content, pending, sender }: { content: string; pending?: boolean; sender: "user" | "bot" }) {
     if (pending) {
       return (
         <div className="flex items-center gap-2">
@@ -272,6 +278,12 @@ export default function ChatInterface({
       );
     }
 
+    // For user messages, just render the raw text
+    if (sender === "user") {
+      return <div className="whitespace-pre-wrap">{content}</div>;
+    }
+
+    // For bot messages, keep the markdown rendering
     return (
       <div className="prose prose-sm dark:prose-invert max-w-none">
         <ReactMarkdown
@@ -470,7 +482,7 @@ export default function ChatInterface({
                       </div>
                     </div>
                   ) : (
-                    <MessageContent content={msg.content} pending={msg.pending} />
+                    <MessageContent content={msg.content} pending={msg.pending} sender={msg.sender} />
                   )}
                 </div>
               ))
@@ -496,7 +508,7 @@ export default function ChatInterface({
                   handleSend();
                 }
               }}
-              className="resize-none min-h-[90px] max-h-[200px] rounded-t-xl w-full p-4 pb-12"
+              className="resize-none min-h-[90px] max-h-[200px] rounded-t-xl w-full p-4"
             />
             <div className="absolute bottom-2 right-3">
               <Select value={selectedModel} onValueChange={setSelectedModel}>
