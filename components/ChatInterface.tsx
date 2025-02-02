@@ -204,52 +204,50 @@ export default function ChatInterface({
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      <div className="flex flex-col h-full max-w-3xl mx-auto w-full relative px-4 pb-4">
+      <div className="relative flex flex-col min-h-full max-w-3xl mx-auto w-full">
         {/* MESSAGES */}
-        <div className="flex-1 pt-8">
-          {messages.length > 0 ? (
-            messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`mb-3 ${
-                  msg.sender === "bot" ? "text-blue-600" : "text-gray-800"
-                }`}
-              >
-                <div className="font-semibold">
-                  {msg.sender === "bot" ? "Bot" : "You"}
+        <div className="flex-1 px-4">
+          <div className="pt-8 pb-[120px]">
+            {messages.length > 0 ? (
+              messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`mb-3 ${
+                    msg.sender === "bot" ? "text-blue-600" : "text-gray-800"
+                  }`}
+                >
+                  <div className="font-semibold">
+                    {msg.sender === "bot" ? "Bot" : "You"}
+                  </div>
+                  <div>{msg.content}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {msg.createdAt.toLocaleTimeString()}
+                  </div>
                 </div>
-                <div>{msg.content}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {msg.createdAt.toLocaleTimeString()}
-                </div>
+              ))
+            ) : (
+              <div className="text-sm text-gray-500">
+
               </div>
-            ))
-          ) : (
-            <div className="text-sm text-gray-500">
-              {chatId === null
-                ? "This is ephemeral (not in Dexie) until you send a message!"
-                : "No messages yet. Type something below to start!"}
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* INPUT AREA */}
-        <div className="sticky bottom-0 left-0 right-0 bg-background-main pt-4 ">
-          <div className="flex items-center gap-2">
-            <Textarea
-              placeholder="Type your message..."
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              className="resize-none min-h-[90px] max-h-[200px]
-                         rounded-t-xl w-full border p-4"
-            />
-          </div>
+        <div className="sticky bottom-0 left-0 right-0 bg-background-main px-4">
+          <Textarea
+            placeholder="Type your message..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            className="resize-none min-h-[90px] max-h-[200px]
+                       rounded-t-xl w-full border p-4"
+          />
         </div>
       </div>
     </div>
