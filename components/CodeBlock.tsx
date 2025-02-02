@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Check, Copy } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import hljs from 'highlight.js';
-import '@/styles/gruvbox-dark.css';
+import React, { useState, useEffect } from "react";
+import { Check, Copy } from "lucide-react";
+import { cn } from "@/lib/utils";
+import hljs from "highlight.js";
+import "@/styles/gruvbox-dark.css";
 
 interface CodeBlockProps {
   language?: string;
@@ -16,8 +16,7 @@ export function CodeBlock({ language, value, className }: CodeBlockProps) {
 
   useEffect(() => {
     if (language) {
-      const highlighted = hljs.highlight(value, { language }).value;
-      setHighlightedCode(highlighted);
+      setHighlightedCode(hljs.highlight(value, { language }).value);
     } else {
       setHighlightedCode(value);
     }
@@ -30,13 +29,14 @@ export function CodeBlock({ language, value, className }: CodeBlockProps) {
   };
 
   return (
-    <div className={cn(
-      'relative group rounded-xl bg-[#282828] shadow-md',
-      className
-    )}>
-      {/* Sticky container that spans full height */}
+    <div
+      style={{
+        maxWidth: "700px",
+        overflowX: "auto",
+      }}
+      className={cn("relative group bg-[#282828] shadow-md rounded-xl", className)}
+    >
       <div className="sticky top-0 z-10 rounded-t-xl bg-[#282828] border border-[#3c3836]">
-        {/* Header bar */}
         <div className="flex items-center justify-between px-4 py-2 bg-[#1d2021] border-b border-[#3c3836] rounded-t-xl">
           <div className="flex items-center gap-2">
             <div className="flex gap-1.5">
@@ -45,7 +45,9 @@ export function CodeBlock({ language, value, className }: CodeBlockProps) {
               <div className="w-3 h-3 rounded-full bg-[#d79921]" />
             </div>
             {language && (
-              <span className="text-xs text-[#928374] ml-2 font-sans">{language}</span>
+              <span className="text-xs text-[#928374] ml-2 font-sans">
+                {language}
+              </span>
             )}
           </div>
           <button
@@ -61,16 +63,16 @@ export function CodeBlock({ language, value, className }: CodeBlockProps) {
         </div>
       </div>
 
-      {/* Code content */}
-      <div className="border border-t-0 border-[#3c3836] rounded-b-xl">
-        <pre className="p-4 overflow-x-auto bg-[#282828]">
-          <code 
-            className={cn('text-sm block', 'font-mono hljs', language && `language-${language}`)}
-            style={{ fontFamily: 'var(--font-jetbrains-mono), monospace' }}
-            dangerouslySetInnerHTML={{ __html: highlightedCode }}
-          />
-        </pre>
-      </div>
+      <pre style={{ margin: 0, padding: "1rem", backgroundColor: "#282828" }}>
+        <code
+          className={cn("text-sm block font-mono hljs", language && `language-${language}`)}
+          style={{ 
+            whiteSpace: "pre",
+            fontFamily: "var(--font-jetbrains-mono), monospace" 
+          }}
+          dangerouslySetInnerHTML={{ __html: highlightedCode }}
+        />
+      </pre>
     </div>
   );
-} 
+}

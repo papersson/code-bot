@@ -13,6 +13,10 @@ export default {
   			'main-background': 'hsl(var(--main-background))',
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
+  			button: {
+  				DEFAULT: '#3E6FCA',
+  				hover: '#345DB0',
+  			},
   			card: {
   				DEFAULT: 'hsl(var(--card))',
   				foreground: 'hsl(var(--card-foreground))'
@@ -88,7 +92,49 @@ export default {
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
   			'accordion-up': 'accordion-up 0.2s ease-out'
-  		}
+  		},
+  		typography: {
+  			DEFAULT: {
+  				css: {
+  					maxWidth: 'none',
+  					color: 'hsl(var(--foreground))',
+  					p: {
+  						marginTop: '1em',
+  						marginBottom: '1em',
+  					},
+  					ul: {
+              listStyleType: 'disc',
+              marginTop: '1em',
+              marginBottom: '1em',
+            },
+            ol: {
+              listStyleType: 'decimal',
+              marginTop: '1em',
+              marginBottom: '1em',
+            },
+  					'ul > li': {
+  						position: 'relative',
+              marginTop: '0.5em',
+              marginBottom: '0.5em',
+  					},
+  					'ol > li': {
+  						position: 'relative',
+              marginTop: '0.5em',
+              marginBottom: '0.5em',
+  					},
+  					code: {
+  						color: 'hsl(var(--foreground))',
+  						backgroundColor: 'hsl(var(--muted))',
+  						borderRadius: '0.25rem',
+  						padding: '0.2em 0.4em',
+  					},
+  					pre: {
+  						backgroundColor: 'hsl(var(--muted))',
+  						color: 'hsl(var(--foreground))',
+  					},
+  				},
+  			},
+  		},
   	}
   },
   plugins: [

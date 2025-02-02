@@ -7,38 +7,34 @@ import { db } from "@/db/dexie";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
-import type { Components } from "react-markdown";
-import { PencilIcon } from "lucide-react";
+import { PencilIcon, CopyIcon, CheckIcon } from "lucide-react";
 
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { CodeBlock } from "@/components/CodeBlock";
 
-// Import the Azure provider and generateText from the AI SDK
-import { createAzure } from "@ai-sdk/azure";
-import { generateText } from "ai";
+interface EphemeralMessage {
+  id?: number;
+  tempId?: string;
+  sender: "user" | "bot";
+  content: string;
+  createdAt: Date;
+  pending?: boolean;
+}
 
 interface Props {
-  /**
-   * If null => ephemeral mode
-   * If a number => an existing or to-be-loaded Dexie chat
-   */
   initialChatId: number | null;
-  /**
-   * Optional name to use if we need to create the chat in Dexie
-   * (e.g. "Home Chat" vs. "New Chat"). 
-   * If not provided, defaults to "New Chat."
-   */
   defaultChatName?: string;
 }
 
-/**
- * ChatInterface can be used by both the Home page
- * (ephemeral at first) AND the [chatId] detail page
- * (always persisted).
- */
 export default function ChatInterface({
   initialChatId,
   defaultChatName = "New Chat",
@@ -47,96 +43,59 @@ export default function ChatInterface({
   const { setCurrentChatId } = useSidebar();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // We'll store the "real" chatId if/when we create or load from Dexie.
-  // If initialChatId is a valid number, we do "persisted mode" right away.
-  // If it's null, we start ephemeral and only become "persisted" if we
-  // actually create a new chat on first send.
   const [chatId, setChatId] = useState<number | null>(initialChatId);
-
-  // For ephemeral usage: we store messages in memory
-  // until we either convert to Dexie or we are already in Dexie mode.
-  interface EphemeralMessage {
-    id?: number;
-    tempId?: string;  // Add this field for temporary IDs
-    sender: "user" | "bot";
-    content: string;
-    createdAt: Date;
-  }
-
-  // Add a pending message type to show loading state
-  interface PendingMessage extends EphemeralMessage {
-    pending?: boolean;
-  }
-
-  const [messages, setMessages] = useState<PendingMessage[]>([]);
+  const [messages, setMessages] = useState<EphemeralMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
 
-  // Model picker state
-  const [selectedModel, setSelectedModel] = useState("o1");
+  // Default to "o3-mini" because "o1" can't stream
+  const [selectedModel, setSelectedModel] = useState("o3-mini");
 
-  // Editing state
+  // For editing existing user messages
   const [editingMessageId, setEditingMessageId] = useState<number | string | null>(null);
   const [editInput, setEditInput] = useState("");
 
-  // Focus textarea on mount and updates for new chats
+  // Focus the textarea once if ephemeral
   useEffect(() => {
     if (initialChatId === null) {
-      // Try immediate focus
       textareaRef.current?.focus();
-
-      // Also try with a small delay to ensure component is fully mounted
-      const timer = setTimeout(() => {
-        textareaRef.current?.focus();
-      }, 100);
-
-      return () => clearTimeout(timer);
     }
   }, [initialChatId]);
 
-  // Additional focus when messages change (for both new chats and responses)
-  useEffect(() => {
-    textareaRef.current?.focus();
-  }, [messages]);
-
-  // If we already have a numeric chatId (persisted mode),
-  // load existing messages from Dexie on mount (and on chatId change).
+  // If numeric chatId, load messages from Dexie
   useEffect(() => {
     if (!session?.user?.email) return;
     if (chatId === null) return; // ephemeral => skip
-    // We do have a numeric chatId => load from Dexie.
     setLoading(true);
 
     (async () => {
       const existingChat = await db.chats.get(chatId!);
       if (!existingChat) {
-        // If the chat doesn't exist, you might do a 404 or just ephemeral fallback.
-        // For now, let's just say "Chat not found" or do ephemeral fallback.
         setMessages([]);
         setLoading(false);
         return;
       }
 
-      // Mark this chat as active in the sidebar
       setCurrentChatId(chatId!);
 
-      const storedMessages = await db.chatMessages
+      const stored = await db.chatMessages
         .where("chatId")
         .equals(chatId!)
         .sortBy("id");
 
-      // Convert Dexie messages to ephemeral
-      const ephemeral: EphemeralMessage[] = storedMessages.map((m) => ({
+      const ephemeral: EphemeralMessage[] = stored.map((m) => ({
         id: m.id,
-        sender: m.sender as "bot" | "user",
+        sender: m.sender as "user" | "bot",
         content: m.content,
         createdAt: m.createdAt || new Date(),
+        pending: false,
       }));
-      setMessages(ephemeral.map((m) => ({ ...m, pending: false })));
+      setMessages(ephemeral);
       setLoading(false);
     })();
   }, [chatId, session, setCurrentChatId]);
 
+  // Show spinner if loading old messages
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -145,131 +104,174 @@ export default function ChatInterface({
     );
   }
 
-  // MAIN SEND LOGIC
+  // Convert ephemeral messages to { role, content }
+  function mapToApiMessages(msgs: EphemeralMessage[]) {
+    return msgs.map((m) => ({
+      role: m.sender === "user" ? "user" : "assistant",
+      content: m.content,
+    }));
+  }
+
+  /**
+   * SEND LOGIC
+   */
   async function handleSend() {
     const content = input.trim();
     if (!content) return;
-    
-    // Wrap XML-like content in a code block
-    const processedContent = content.includes('<') || content.includes('>')
-      ? `\`\`\`xml\n${content}\n\`\`\``
-      : content;
-    
     setInput("");
 
+    // If ephemeral => create Dexie chat
     let currentChatId = chatId;
     const now = new Date();
-
     if (currentChatId === null) {
-      // FIRST TIME: create a brand-new Dexie chat
-      console.log('📝 Creating new chat in Dexie');
       currentChatId = await db.chats.add({
         userId: session!.user!.email!,
         name: defaultChatName,
         createdAt: now,
         updatedAt: now,
       });
-      console.log('✅ Created new chat with ID:', currentChatId);
       setChatId(currentChatId);
       setCurrentChatId(currentChatId);
-
-      // Focus textarea after creating new chat
-      textareaRef.current?.focus();
-
-      // Dispatch so the sidebar updates immediately
       window.dispatchEvent(new Event("chat-created"));
     }
 
-    // At this point, currentChatId is guaranteed to be a number
     const chatIdForMessages = currentChatId as number;
 
-    // Insert the user message in Dexie
-    console.log('📤 Saving user message to Dexie');
-    const msgId = await db.chatMessages.add({
+    // Save user message
+    const userMsgId = await db.chatMessages.add({
       chatId: chatIdForMessages,
       sender: "user",
       content,
       createdAt: now,
       updatedAt: now,
     });
-    console.log('✅ Saved user message with ID:', msgId);
-
-    // Update the chat's updatedAt timestamp
-    await db.chats.update(chatIdForMessages, { updatedAt: now });
-
-    // Also reflect it in ephemeral local state
     setMessages((prev) => [
       ...prev,
-      { id: msgId, sender: "user", content, createdAt: now, pending: false },
+      { id: userMsgId, sender: "user", content, createdAt: now },
     ]);
 
-    // Add pending bot message with a temporary ID
+    // Create one pending bot message (stable tempId)
     const tempId = `pending-${Date.now()}`;
-    console.log('⏳ Adding pending bot message with tempId:', tempId);
     setMessages((prev) => [
       ...prev,
-      {
-        sender: "bot",
-        content: "",
-        createdAt: new Date(),
-        pending: true,
-        tempId
-      },
+      { tempId, sender: "bot", content: "", createdAt: new Date(), pending: true },
     ]);
 
-    // Generate bot reply using Azure AI SDK
     try {
-      console.log('🤖 Generating bot reply using model:', selectedModel);
-      const azure = createAzure({
-        resourceName: process.env.NEXT_PUBLIC_AZURE_RESOURCE_NAME,
-        apiKey: process.env.NEXT_PUBLIC_AZURE_API_KEY,
-        apiVersion: "2024-12-01-preview",
+      const allMessages = [
+        ...messages,
+        { sender: "user" as const, content, createdAt: now },
+      ];
+      const body = {
+        messages: mapToApiMessages(allMessages),
+        model: selectedModel,
+      };
+
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
       });
-      const modelInstance = azure(selectedModel);
-      console.log('📤 Sending prompt:', content);
-      const response = await generateText({
-        model: modelInstance,
-        prompt: content,
+      if (!response.ok || !response.body) {
+        console.error("❌ Stream error:", response.status);
+        // Remove the pending
+        setMessages((prev) => prev.slice(0, -1));
+        return;
+      }
+
+      // Throttling setup
+      const flushInterval = 50; // ms
+      let lastFlushTime = Date.now();
+      let partialContent = "";
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        partialContent += chunk;
+
+        // Throttle UI updates to reduce flicker
+        const nowTime = Date.now();
+        if (nowTime - lastFlushTime >= flushInterval) {
+          setMessages((prev) => {
+            const newMsgs = [...prev];
+            const lastMsg = newMsgs[newMsgs.length - 1];
+            if (lastMsg?.pending) {
+              lastMsg.content = partialContent;
+            }
+            return newMsgs;
+          });
+          lastFlushTime = nowTime;
+        }
+      }
+
+      // Final update after the stream ends
+      setMessages((prev) => {
+        const newMsgs = [...prev];
+        const lastMsg = newMsgs[newMsgs.length - 1];
+        if (lastMsg?.pending) {
+          lastMsg.content = partialContent;
+        }
+        return newMsgs;
       });
-      console.log('📥 Complete API Response:', {
-        response,
-        responseType: typeof response,
-        responseKeys: Object.keys(response),
-      });
-      const { text: botText, usage } = response;
-      console.log('📝 Bot Text Content:', botText);
-      console.log('📊 Usage Stats:', usage);
-      
+
+      // Save final bot message
       const botNow = new Date();
-      console.log('💾 Saving bot response to Dexie');
       const botMsgId = await db.chatMessages.add({
         chatId: chatIdForMessages,
         sender: "bot",
-        content: botText,
+        content: partialContent,
         createdAt: botNow,
         updatedAt: botNow,
       });
-      console.log('✅ Saved bot message with ID:', botMsgId);
-      
-      // Replace pending message with actual response
-      setMessages((prev) => [
-        ...prev.slice(0, -1),
-        { id: botMsgId, sender: "bot", content: botText, createdAt: botNow },
-      ]);
-      
+      setMessages((prev) => {
+        const newMsgs = [...prev];
+        newMsgs[newMsgs.length - 1] = {
+          id: botMsgId,
+          sender: "bot",
+          content: partialContent,
+          createdAt: botNow,
+          pending: false,
+        };
+        return newMsgs;
+      });
+
       await db.chats.update(chatIdForMessages, { updatedAt: botNow });
-    } catch (error) {
-      console.error('❌ Error generating bot reply:', error);
-      // Remove pending message on error
-      setMessages((prev) => prev.slice(0, -1));
+    } catch (err) {
+      console.error("❌ Error streaming bot reply:", err);
+      setMessages((prev) => prev.slice(0, -1)); // remove pending
     } finally {
+      // We'll only focus once after sending, not every chunk
       textareaRef.current?.focus();
     }
   }
 
-  // Add this new component for message rendering
-  function MessageContent({ content, pending, sender }: { content: string; pending?: boolean; sender: "user" | "bot" }) {
-    if (pending) {
+  /**
+   * Renders the message. If pending & no content => spinner
+   */
+  function MessageContent({
+    content,
+    pending,
+    sender,
+  }: {
+    content: string;
+    pending?: boolean;
+    sender: "user" | "bot";
+  }) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async () => {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    };
+
+    // If still waiting for the first chunk
+    if (pending && !content) {
       return (
         <div className="flex items-center gap-2">
           <Spinner size={16} className="text-muted-foreground" />
@@ -278,211 +280,337 @@ export default function ChatInterface({
       );
     }
 
-    // For user messages, just render the raw text
+    // If partial text is present & still pending, show text + spinner
+    if (pending && content) {
+      return (
+        <div>
+          <div className="mb-1 text-sm text-muted-foreground flex items-center gap-2">
+            <Spinner size={16} />
+            <span>Generating partial response...</span>
+          </div>
+          <MarkdownContent text={content} />
+        </div>
+      );
+    }
+
+    // For user messages, render as raw text
     if (sender === "user") {
       return <div className="whitespace-pre-wrap">{content}</div>;
     }
 
-    // For bot messages, keep the markdown rendering
+    // For bot messages, render as markdown with copy button
     return (
-      <div className="prose prose-sm dark:prose-invert max-w-none">
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          rehypePlugins={[rehypeRaw]}
-          components={{
-            pre: ({ node, ...props }) => (
-              <div className="relative">
-                {props.children}
-              </div>
-            ),
-            code({ node, className, children, ...props }) {
-              const match = /language-(\w+)/.exec(className || '');
-              const language = match ? match[1] : undefined;
-              const isInline = !match;
-              const code = String(children).replace(/\n$/, '');
+      <div className="relative">
+        <div className="prose prose-sm dark:prose-invert [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+          <div className="max-w-full">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+              components={{
+                pre: ({ children }) => (
+                  <div className="relative max-w-full">{children}</div>
+                ),
+                code({ className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || "");
+                  const language = match ? match[1] : undefined;
+                  const isInline = !match;
+                  const code = String(children).replace(/\n$/, "");
 
-              if (isInline) {
-                return (
-                  <code className="bg-muted px-1.5 py-0.5 rounded-md text-sm" {...props}>
-                    {children}
-                  </code>
-                );
-              }
+                  if (isInline) {
+                    return (
+                      <code
+                        className="bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-md text-sm font-mono border border-zinc-200 dark:border-zinc-700"
+                        style={{
+                          fontFamily: "var(--font-jetbrains-mono), monospace",
+                        }}
+                        {...props}
+                      >
+                        {children}
+                      </code>
+                    );
+                  }
 
-              return (
-                <CodeBlock
-                  value={code}
-                  language={language}
-                  className="my-4"
-                />
-              );
-            },
-          }}
-        >
-          {content}
-        </ReactMarkdown>
+                  return (
+                    <CodeBlock value={code} language={language} className="my-4" />
+                  );
+                },
+              }}
+            >
+              {content}
+            </ReactMarkdown>
+          </div>
+        </div>
+        <div className="flex justify-end mt-2">
+          <button
+            onClick={handleCopy}
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md flex items-center gap-1 text-xs text-zinc-500"
+          >
+            {copied ? (
+              <CheckIcon className="h-4 w-4" />
+            ) : (
+              <CopyIcon className="h-4 w-4" />
+            )}
+            <span>{copied ? "Copied!" : "Copy Response"}</span>
+          </button>
+        </div>
       </div>
     );
   }
 
-  // Add function to handle message edit
-  const handleEditSubmit = async (messageId: number) => {
+  /**
+   * A sub-component for rendering text as Markdown.
+   */
+  function MarkdownContent({ text }: { text: string }) {
+    return (
+      <div className="relative">
+        <div className="prose prose-sm dark:prose-invert [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+          <div className="max-w-full">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeRaw]}
+              components={{
+                pre: ({ children }) => (
+                  <div className="relative max-w-full overflow-x-auto">
+                    {children}
+                  </div>
+                ),
+                code({ className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || "");
+                  const language = match ? match[1] : undefined;
+                  const isInline = !match;
+                  const code = String(children).replace(/\n$/, "");
+
+                  if (isInline) {
+                    return (
+                      <code
+                        className="bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-md text-sm font-mono border border-zinc-200 dark:border-zinc-700"
+                        style={{
+                          fontFamily: "var(--font-jetbrains-mono), monospace",
+                        }}
+                        {...props}
+                      >
+                        {children}
+                      </code>
+                    );
+                  }
+
+                  return (
+                    <CodeBlock
+                      value={code}
+                      language={language}
+                      className="my-4"
+                    />
+                  );
+                },
+              }}
+            >
+              {text}
+            </ReactMarkdown>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  /**
+   * Edit logic: re-send from that message onwards, same throttle approach
+   */
+  async function handleEditSubmit(messageId: number) {
     if (!editInput.trim()) return;
-    
+    const now = new Date();
+
     try {
-      // Update the message in the database
+      // Update Dexie
       await db.chatMessages.update(messageId, {
         content: editInput,
-        updatedAt: new Date(),
+        updatedAt: now,
       });
-      
-      // Find the index of the edited message
-      const editedMessageIndex = messages.findIndex(msg => msg.id === messageId);
-      if (editedMessageIndex === -1) return;
 
-      // Remove all messages after the edited message
-      const messagesBeforeEdit = messages.slice(0, editedMessageIndex + 1);
-      
-      // Update the messages state with only messages up to the edited one
-      setMessages(messagesBeforeEdit.map(msg => 
-        msg.id === messageId ? { ...msg, content: editInput } : msg
-      ));
-      
-      // Reset editing state
+      const idx = messages.findIndex((m) => m.id === messageId);
+      if (idx === -1) return;
+
+      // Keep up to the edited message
+      const messagesBeforeEdit = messages.slice(0, idx + 1).map((m) =>
+        m.id === messageId ? { ...m, content: editInput } : m
+      );
+      setMessages(messagesBeforeEdit);
       setEditingMessageId(null);
       setEditInput("");
 
-      // Add pending bot message
-      const now = new Date();
-      setMessages(prev => [...prev, {
-        sender: "bot",
-        content: "",
-        createdAt: now,
-        pending: true,
-        tempId: `pending-${Date.now()}`
-      }]);
-
-      // Delete subsequent messages from the database
+      // Remove subsequent messages from Dexie
       if (chatId) {
-        const subsequentMessages = await db.chatMessages
-          .where('chatId')
+        const subsequent = await db.chatMessages
+          .where("chatId")
           .equals(chatId)
-          .filter(msg => msg.id! > messageId)
+          .filter((msg) => msg.id! > messageId)
           .toArray();
-        
-        await Promise.all(subsequentMessages.map(msg => 
-          db.chatMessages.delete(msg.id!)
-        ));
+        await Promise.all(
+          subsequent.map((msg) => db.chatMessages.delete(msg.id!))
+        );
       }
 
-      // Generate new bot reply
-      try {
-        const azure = createAzure({
-          resourceName: process.env.NEXT_PUBLIC_AZURE_RESOURCE_NAME,
-          apiKey: process.env.NEXT_PUBLIC_AZURE_API_KEY,
-          apiVersion: "2024-12-01-preview",
-        });
-        const modelInstance = azure(selectedModel);
-        const { text: botText, usage } = await generateText({
-          model: modelInstance,
-          prompt: editInput,
-        });
-        const botNow = new Date();
-        
-        if (chatId) {
-          const botMsgId = await db.chatMessages.add({
-            chatId: chatId,
-            sender: "bot",
-            content: botText,
-            createdAt: botNow,
-            updatedAt: botNow,
-          });
-          
-          // Replace pending message with actual response
-          setMessages((prev) => [
-            ...prev.slice(0, -1),
-            { id: botMsgId, sender: "bot", content: botText, createdAt: botNow },
-          ]);
-          
-          await db.chats.update(chatId, { updatedAt: botNow });
-        }
-      } catch (error) {
-        // Remove pending message on error
-        setMessages((prev) => prev.slice(0, -1));
-        console.error("Error generating bot reply:", error);
+      // Insert new pending bot message
+      const tempId = `pending-edit-${Date.now()}`;
+      const allMessages = [
+        ...messages,
+        { sender: "user" as const, content, createdAt: now },
+      ];
+      const body = {
+        messages: mapToApiMessages(allMessages),
+        model: selectedModel,
+      };
+
+      // Re-send to /api/chat
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok || !response.body) {
+        console.error("❌ Stream error (edit):", response.status);
+        setMessages((prev) => prev.slice(0, -1)); // remove pending
+        return;
       }
-    } catch (error) {
-      console.error("Error updating message:", error);
+
+      let lastFlushTime = Date.now();
+      let partialContent = "";
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        partialContent += chunk;
+
+        // Throttle
+        const nowTime = Date.now();
+        if (nowTime - lastFlushTime >= 50) {
+          setMessages((prev) => {
+            const newMsgs = [...prev];
+            newMsgs[newMsgs.length - 1].content = partialContent;
+            return newMsgs;
+          });
+          lastFlushTime = nowTime;
+        }
+      }
+
+      // Final update
+      setMessages((prev) => {
+        const newMsgs = [...prev];
+        newMsgs[newMsgs.length - 1].content = partialContent;
+        return newMsgs;
+      });
+
+      // Store final in Dexie
+      const botNow = new Date();
+      const botMsgId = await db.chatMessages.add({
+        chatId: chatId,
+        sender: "bot",
+        content: partialContent,
+        createdAt: botNow,
+        updatedAt: botNow,
+      });
+      setMessages((prev) => {
+        const newMsgs = [...prev];
+        newMsgs[newMsgs.length - 1] = {
+          id: botMsgId,
+          sender: "bot",
+          content: partialContent,
+          createdAt: botNow,
+          pending: false,
+        };
+        return newMsgs;
+      });
+
+      await db.chats.update(chatId, { updatedAt: botNow });
+    } catch (err) {
+      console.error("❌ Error editing message:", err);
     }
-  };
+  }
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
-      <div className="relative flex flex-col min-h-full max-w-3xl mx-auto w-full">
-        {/* MESSAGES */}
-        <div className="flex-1 px-4">
-          <div className="pt-8 pb-[120px]">
+    <div className="flex flex-col h-full min-w-0 overflow-y-auto">
+      <div className="relative flex flex-col min-h-full max-w-3xl mx-auto w-full min-w-0">
+        <div className="flex-1 min-w-0">
+          <div className="pt-8 pb-[120px] px-4 min-w-0">
             {messages.length > 0 ? (
               messages.map((msg) => (
                 <div
                   key={msg.id || msg.tempId}
                   className={cn(
-                    "mb-6 px-4 py-3 rounded-lg group relative",
-                    msg.sender === "bot" 
-                      ? "bg-background-main" 
-                      : "rounded-xl bg-white dark:bg-zinc-800 shadow-sm border border-zinc-200 dark:border-zinc-700 dark:text-zinc-100"
+                    // ADDING `min-w-0` here on the outer flex container:
+                    "mb-6 group relative flex items-start justify-between gap-2 min-w-0",
+                    msg.sender === "bot"
+                      ? "bg-background-main rounded-lg p-4"
+                      : editingMessageId === msg.id
+                      ? "bg-background-main dark:bg-zinc-800 p-4"
+                      : "bg-white dark:bg-zinc-800 shadow-sm border border-zinc-200 dark:border-zinc-700 dark:text-zinc-100 rounded-xl p-4"
                   )}
                 >
-                  {msg.sender === "user" && msg.id && (
+                  {/* Also `min-w-0` for the flex child: */}
+                  <div className="flex-1 min-w-0">
+                    {editingMessageId === msg.id ? (
+                      <div className="flex flex-col gap-4">
+                        <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 shadow-sm">
+                          <Textarea
+                            value={editInput}
+                            onChange={(e) => setEditInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                handleEditSubmit(msg.id!);
+                              }
+                              if (e.key === "Escape") {
+                                setEditingMessageId(null);
+                                setEditInput("");
+                              }
+                            }}
+                            className="resize-none min-h-[90px] max-h-[200px] w-full bg-white focus:outline-none focus:ring-0 p-3 text-sm rounded-xl"
+                            autoFocus
+                            placeholder="Edit your message..."
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 justify-end">
+                          <button
+                            onClick={() => {
+                              setEditingMessageId(null);
+                              setEditInput("");
+                            }}
+                            className="px-4 py-1.5 text-xs font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100 rounded-full transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => handleEditSubmit(msg.id!)}
+                            className="px-4 py-1.5 text-xs font-medium text-white bg-button hover:bg-button-hover rounded-full transition-colors"
+                          >
+                            Save changes
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <MessageContent
+                        content={msg.content}
+                        pending={msg.pending}
+                        sender={msg.sender}
+                      />
+                    )}
+                  </div>
+
+                  {/* Edit button for user messages */}
+                  {msg.sender === "user" && msg.id && !editingMessageId && (
                     <button
                       onClick={() => {
                         setEditingMessageId(msg.id!);
                         setEditInput(msg.content);
                       }}
-                      className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1.5 text-zinc-400 hover:text-zinc-500 dark:text-zinc-500 dark:hover:text-zinc-400"
                     >
-                      <PencilIcon className="h-4 w-4 text-zinc-500" />
+                      <PencilIcon className="h-3.5 w-3.5" />
                     </button>
-                  )}
-                  
-                  {editingMessageId === msg.id ? (
-                    <div className="flex flex-col gap-2">
-                      <Textarea
-                        value={editInput}
-                        onChange={(e) => setEditInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleEditSubmit(msg.id!);
-                          }
-                          if (e.key === "Escape") {
-                            setEditingMessageId(null);
-                            setEditInput("");
-                          }
-                        }}
-                        className="resize-none min-h-[90px] max-h-[200px] w-full p-2"
-                        autoFocus
-                      />
-                      <div className="flex gap-2 justify-end">
-                        <button
-                          onClick={() => {
-                            setEditingMessageId(null);
-                            setEditInput("");
-                          }}
-                          className="px-3 py-1 text-sm text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => handleEditSubmit(msg.id!)}
-                          className="px-3 py-1 text-sm bg-blue-500 text-white hover:bg-blue-600 rounded"
-                        >
-                          Save
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <MessageContent content={msg.content} pending={msg.pending} sender={msg.sender} />
                   )}
                 </div>
               ))
@@ -494,9 +622,9 @@ export default function ChatInterface({
           </div>
         </div>
 
-        {/* INPUT AREA */}
-        <div className="sticky bottom-0 left-0 right-0 bg-background-main px-4 z-10">
-          <div className="relative">
+        {/* Input area */}
+        <div className="sticky bottom-0 left-0 right-0 bg-background-main z-10">
+          <div className="relative px-4">
             <Textarea
               ref={textareaRef}
               placeholder="Type your message..."
@@ -508,16 +636,20 @@ export default function ChatInterface({
                   handleSend();
                 }
               }}
-              className="resize-none min-h-[90px] max-h-[200px] rounded-t-xl w-full p-4"
+              className="resize-none min-h-[90px] max-h-[200px] rounded-t-xl w-full p-4 pb-12"
             />
             <div className="absolute bottom-2 right-3">
               <Select value={selectedModel} onValueChange={setSelectedModel}>
-                <SelectTrigger className="h-7 w-[100px] border-none shadow-none text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus:ring-0 focus:ring-offset-0 focus:border-none focus:outline-none flex justify-end">
-                  <SelectValue className="text-right" placeholder="Select model" />
+                <SelectTrigger className="h-7 w-[100px] border-none shadow-none text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground">
+                  <SelectValue className="text-right" placeholder="Model" />
                 </SelectTrigger>
                 <SelectContent className="border border-input/20 bg-background/95 shadow-md overflow-hidden">
-                  <SelectItem value="o1" className="text-xs text-right">o1</SelectItem>
-                  <SelectItem value="o1-mini" className="text-xs text-right">o1-mini</SelectItem>
+                  <SelectItem value="o3-mini" className="text-xs text-right">
+                    o3-mini
+                  </SelectItem>
+                  <SelectItem value="o1" className="text-xs text-right">
+                    o1
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
