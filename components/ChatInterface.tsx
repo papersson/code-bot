@@ -156,12 +156,14 @@ export default function ChatInterface({
 
     if (currentChatId === null) {
       // FIRST TIME: create a brand-new Dexie chat
+      console.log('📝 Creating new chat in Dexie');
       currentChatId = await db.chats.add({
         userId: session!.user!.email!,
         name: defaultChatName,
         createdAt: now,
         updatedAt: now,
       });
+      console.log('✅ Created new chat with ID:', currentChatId);
       setChatId(currentChatId);
       setCurrentChatId(currentChatId);
 
@@ -176,6 +178,7 @@ export default function ChatInterface({
     const chatIdForMessages = currentChatId as number;
 
     // Insert the user message in Dexie
+    console.log('📤 Saving user message to Dexie');
     const msgId = await db.chatMessages.add({
       chatId: chatIdForMessages,
       sender: "user",
@@ -183,6 +186,7 @@ export default function ChatInterface({
       createdAt: now,
       updatedAt: now,
     });
+    console.log('✅ Saved user message with ID:', msgId);
 
     // Update the chat's updatedAt timestamp
     await db.chats.update(chatIdForMessages, { updatedAt: now });
@@ -194,6 +198,8 @@ export default function ChatInterface({
     ]);
 
     // Add pending bot message with a temporary ID
+    const tempId = `pending-${Date.now()}`;
+    console.log('⏳ Adding pending bot message with tempId:', tempId);
     setMessages((prev) => [
       ...prev,
       {
@@ -201,12 +207,13 @@ export default function ChatInterface({
         content: "",
         createdAt: new Date(),
         pending: true,
-        tempId: `pending-${Date.now()}`
+        tempId
       },
     ]);
 
     // Generate bot reply using Azure AI SDK
     try {
+      console.log('🤖 Generating bot reply using model:', selectedModel);
       const azure = createAzure({
         resourceName: process.env.NEXT_PUBLIC_AZURE_RESOURCE_NAME,
         apiKey: process.env.NEXT_PUBLIC_AZURE_API_KEY,
@@ -217,7 +224,10 @@ export default function ChatInterface({
         model: modelInstance,
         prompt: content,
       });
+      console.log('✨ Received bot response with usage:', usage);
+      
       const botNow = new Date();
+      console.log('💾 Saving bot response to Dexie');
       const botMsgId = await db.chatMessages.add({
         chatId: chatIdForMessages,
         sender: "bot",
@@ -225,6 +235,7 @@ export default function ChatInterface({
         createdAt: botNow,
         updatedAt: botNow,
       });
+      console.log('✅ Saved bot message with ID:', botMsgId);
       
       // Replace pending message with actual response
       setMessages((prev) => [
@@ -234,9 +245,9 @@ export default function ChatInterface({
       
       await db.chats.update(chatIdForMessages, { updatedAt: botNow });
     } catch (error) {
+      console.error('❌ Error generating bot reply:', error);
       // Remove pending message on error
       setMessages((prev) => prev.slice(0, -1));
-      console.error("Error generating bot reply:", error);
     } finally {
       textareaRef.current?.focus();
     }
@@ -464,7 +475,7 @@ export default function ChatInterface({
         </div>
 
         {/* INPUT AREA */}
-        <div className="sticky bottom-0 left-0 right-0 bg-background-main px-4">
+        <div className="sticky bottom-0 left-0 right-0 bg-background-main px-4 z-10">
           <div className="relative">
             <Textarea
               ref={textareaRef}
