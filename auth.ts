@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 
-export const authOptions = {
+export const { auth, handlers, signIn, signOut } = NextAuth({
   providers: [
     MicrosoftEntraID({
       clientId: process.env.AUTH_MICROSOFT_ENTRA_ID_ID!,
@@ -21,6 +21,4 @@ export const authOptions = {
     },
   },
   trustHost: true,
-};
-
-export default NextAuth(authOptions);
+});
