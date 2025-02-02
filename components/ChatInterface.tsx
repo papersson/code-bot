@@ -220,11 +220,19 @@ export default function ChatInterface({
         apiVersion: "2024-12-01-preview",
       });
       const modelInstance = azure(selectedModel);
-      const { text: botText, usage } = await generateText({
+      console.log('📤 Sending prompt:', content);
+      const response = await generateText({
         model: modelInstance,
         prompt: content,
       });
-      console.log('✨ Received bot response with usage:', usage);
+      console.log('📥 Complete API Response:', {
+        response,
+        responseType: typeof response,
+        responseKeys: Object.keys(response),
+      });
+      const { text: botText, usage } = response;
+      console.log('📝 Bot Text Content:', botText);
+      console.log('📊 Usage Stats:', usage);
       
       const botNow = new Date();
       console.log('💾 Saving bot response to Dexie');
