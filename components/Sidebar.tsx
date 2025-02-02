@@ -1,9 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link"; // for client-side navigation
 import { signIn, signOut, useSession } from "next-auth/react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { db, Chat, Project } from "@/db/dexie";
+import { useSidebar } from "@/hooks/useSidebar";
 
 // Shadcn components
 import { Button } from "@/components/ui/button";
@@ -25,9 +27,9 @@ import { Plus, Folder, Pencil, X } from "lucide-react";
 export default function Sidebar() {
   const { data: session } = useSession();
   const router = useRouter();
-  const pathname = usePathname();
 
   const userEmail = session?.user?.email;
+  const { currentChatId } = useSidebar();
 
   // All unassigned chats (i.e. projectId == null)
   const [recentChats, setRecentChats] = useState<Chat[]>([]);
@@ -44,16 +46,21 @@ export default function Sidebar() {
   const [renamingChatId, setRenamingChatId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
 
+  // A small trick to force re-render/reload. Increment reloadKey to refetch data.
+  const [reloadKey, setReloadKey] = useState(0);
+
   // Load data
   useEffect(() => {
     if (!userEmail) return;
 
-    (async () => {
+    async function loadData() {
       // Grab all chats for this user
       const allChats = await db.chats.where("userId").equals(userEmail).toArray();
 
       // Separate unassigned from assigned
-      const unassigned = allChats.filter((c) => !c.projectId).sort(sortByRecent);
+      const unassigned = allChats
+        .filter((c) => !c.projectId)
+        .sort(sortByRecent);
       setRecentChats(unassigned);
 
       // Group by project
@@ -71,8 +78,19 @@ export default function Sidebar() {
       // Load projects
       const allProjects = await db.projects.orderBy("id").toArray();
       setProjects(allProjects);
-    })();
-  }, [userEmail, renamingChatId]);
+    }
+
+    loadData();
+  }, [userEmail, renamingChatId, reloadKey]);
+
+  // Listen for "chat-created" events (from the home page or anywhere else)
+  useEffect(() => {
+    function onChatCreated() {
+      setReloadKey((prev) => prev + 1);
+    }
+    window.addEventListener("chat-created", onChatCreated);
+    return () => window.removeEventListener("chat-created", onChatCreated);
+  }, []);
 
   // Helper: sort by updatedAt desc or createdAt desc
   function sortByRecent(a: Chat, b: Chat) {
@@ -91,7 +109,7 @@ export default function Sidebar() {
     );
   }
 
-  // Create a new chat
+  // Create a new chat (manual from the sidebar's plus button)
   async function handleNewChat() {
     const now = new Date();
     const newChat = {
@@ -103,16 +121,14 @@ export default function Sidebar() {
 
     const newId = await db.chats.add(newChat);
 
-    // Update the recentChats state with the new chat
-    const chatWithId = { ...newChat, id: newId };
-    setRecentChats((prev) => [chatWithId, ...prev]);
+    // Force the sidebar to reload chat list
+    window.dispatchEvent(new Event("chat-created"));
 
-    router.push(`/chats/${newId}`);
+    router.push(`/chats/${newId}`); 
   }
 
-  // Drag/Drop
+  // Drag/Drop (assign a chat to a project)
   function onDragStartChat(e: React.DragEvent<HTMLDivElement>, chat: Chat) {
-    // Transfer the chat's ID so we know which chat we're dropping
     e.dataTransfer.setData("text/plain", String(chat.id));
   }
   function onDragOverProject(e: React.DragEvent<HTMLDivElement>) {
@@ -128,21 +144,8 @@ export default function Sidebar() {
     const now = new Date();
     await db.chats.update(chatId, { projectId, updatedAt: now });
 
-    // Force re‐load
-    const allChats = await db.chats.where("userId").equals(userEmail!).toArray();
-    const unassigned = allChats.filter((c) => !c.projectId).sort(sortByRecent);
-    setRecentChats(unassigned);
-
-    const grouped: Record<number, Chat[]> = {};
-    allChats
-      .filter((c) => c.projectId)
-      .sort(sortByRecent)
-      .forEach((chat) => {
-        const pid = chat.projectId as number;
-        if (!grouped[pid]) grouped[pid] = [];
-        grouped[pid].push(chat);
-      });
-    setProjectChats(grouped);
+    // Force reload
+    setReloadKey((prev) => prev + 1);
   }
 
   // Project creation
@@ -156,17 +159,15 @@ export default function Sidebar() {
     });
     setOpenProjectDialog(false);
     setNewProjectName("");
-    // Reload projects:
-    const allProjects = await db.projects.orderBy("id").toArray();
-    setProjects(allProjects);
+    // Force reload
+    setReloadKey((prev) => prev + 1);
   }
 
-  // Begin renaming a chat
+  // Renaming a chat
   function startRename(chatId: number, currentName: string) {
     setRenamingChatId(chatId);
     setRenameValue(currentName);
   }
-  // Commit rename
   async function commitRename(chatId: number) {
     if (!renameValue.trim()) return;
     const now = new Date();
@@ -176,8 +177,8 @@ export default function Sidebar() {
     });
     setRenamingChatId(null);
     setRenameValue("");
+    setReloadKey((prev) => prev + 1);
   }
-  // Cancel rename
   function cancelRename() {
     setRenamingChatId(null);
     setRenameValue("");
@@ -186,21 +187,7 @@ export default function Sidebar() {
   // Delete chat
   async function deleteChat(chatId: number) {
     await db.chats.delete(chatId);
-    // Force re-load
-    const allChats = await db.chats.where("userId").equals(userEmail!).toArray();
-    const unassigned = allChats.filter((c) => !c.projectId).sort(sortByRecent);
-    setRecentChats(unassigned);
-
-    const grouped: Record<number, Chat[]> = {};
-    allChats
-      .filter((c) => c.projectId)
-      .sort(sortByRecent)
-      .forEach((chat) => {
-        const pid = chat.projectId as number;
-        if (!grouped[pid]) grouped[pid] = [];
-        grouped[pid].push(chat);
-      });
-    setProjectChats(grouped);
+    setReloadKey((prev) => prev + 1);
   }
 
   // Delete project
@@ -216,14 +203,7 @@ export default function Sidebar() {
     // Then delete the project
     await db.projects.delete(projectId);
 
-    // Reload projects
-    const allProjects = await db.projects.orderBy("id").toArray();
-    setProjects(allProjects);
-
-    // Reload chats to update the UI
-    const allChats = await db.chats.where("userId").equals(userEmail!).toArray();
-    const unassigned = allChats.filter((c) => !c.projectId).sort(sortByRecent);
-    setRecentChats(unassigned);
+    setReloadKey((prev) => prev + 1);
   }
 
   return (
@@ -277,29 +257,29 @@ export default function Sidebar() {
                 value={`project-${proj.id}`}
                 className="border-none"
               >
-                <AccordionTrigger className="text-sm group hover:no-underline">
-                  <div className="flex items-center justify-between w-full">
+                <div className="flex items-center justify-between group">
+                  <AccordionTrigger className="text-sm hover:no-underline flex-1 pr-2">
                     <div className="flex items-center gap-2">
                       <Folder className="w-3.5 h-3.5" />
                       {proj.name}
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteProject(proj.id!);
-                      }}
-                    >
-                      <X className="w-3.5 h-3.5 text-red-500 hover:text-red-600" />
-                    </Button>
-                  </div>
-                </AccordionTrigger>
+                  </AccordionTrigger>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteProject(proj.id!);
+                    }}
+                  >
+                    <X className="w-3.5 h-3.5 text-red-500 hover:text-red-600" />
+                  </Button>
+                </div>
                 <AccordionContent>
                   <div
                     className="mt-1"
-                    onDragOver={(e) => onDragOverProject(e)}
+                    onDragOver={onDragOverProject}
                     onDrop={(e) => onDropProject(e, proj.id!)}
                   >
                     {chatsForProject.length === 0 ? (
@@ -308,7 +288,8 @@ export default function Sidebar() {
                       </p>
                     ) : (
                       chatsForProject.map((chat) => {
-                        const active = pathname === `/chats/${chat.id}`;
+                        const active = (chat.id === currentChatId);
+
                         return (
                           <div
                             key={chat.id}
@@ -341,12 +322,12 @@ export default function Sidebar() {
                             ) : (
                               <div className="flex justify-between items-center w-full">
                                 <Button asChild variant="ghost" className="px-0 py-0 flex-1 text-left">
-                                  <a
+                                  <Link
                                     href={`/chats/${chat.id}`}
                                     className="text-sm overflow-hidden text-ellipsis whitespace-nowrap"
                                   >
                                     {chat.name || `Chat #${chat.id}`}
-                                  </a>
+                                  </Link>
                                 </Button>
                                 <div className="flex gap-0.5 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <Button
@@ -396,7 +377,7 @@ export default function Sidebar() {
           <p className="text-xs text-muted-foreground">No unassigned chats.</p>
         ) : (
           recentChats.map((chat) => {
-            const active = pathname === `/chats/${chat.id}`;
+            const active = (chat.id === currentChatId);
             return (
               <div
                 key={chat.id}
@@ -427,12 +408,12 @@ export default function Sidebar() {
                 ) : (
                   <div className="flex justify-between items-center w-full">
                     <Button asChild variant="ghost" className="px-0 py-0 flex-1 text-left">
-                      <a
+                      <Link
                         href={`/chats/${chat.id}`}
                         className="text-sm overflow-hidden text-ellipsis whitespace-nowrap"
                       >
                         {chat.name || `Chat #${chat.id}`}
-                      </a>
+                      </Link>
                     </Button>
                     <div className="flex gap-0.5 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <Button
@@ -465,11 +446,7 @@ export default function Sidebar() {
       {/* User info and sign out at bottom */}
       <div className="mt-auto pt-4 border-t border-muted-foreground flex items-center justify-between">
         <span className="text-sm">Signed in as {session.user?.email}</span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => signOut()}
-        >
+        <Button variant="outline" size="sm" onClick={() => signOut()}>
           Sign out
         </Button>
       </div>

@@ -9,9 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
+import { useSidebar } from "@/hooks/useSidebar";
+
 export default function ChatDetailPage() {
   const { data: session } = useSession();
   const { chatId } = useParams() as { chatId: string };
+  const { setCurrentChatId } = useSidebar();
 
   const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -23,6 +26,9 @@ export default function ChatDetailPage() {
   useEffect(() => {
     if (!session?.user?.email) return;
     if (!chatId) return;
+
+    // Mark in sidebar as current chat
+    setCurrentChatId(Number(chatId));
 
     // Load chat
     db.chats.get(Number(chatId)).then((foundChat) => {
@@ -43,7 +49,10 @@ export default function ChatDetailPage() {
 
     // Load projects for the drop-down
     db.projects.toArray().then(setProjects);
-  }, [chatId, session?.user?.email]);
+
+    // On unmount, we could clear the currentChatId or leave it. For simplicity, we won't clear.
+    // return () => { setCurrentChatId(null); }
+  }, [chatId, session?.user?.email, setCurrentChatId]);
 
   if (!session) {
     return <div className="p-4">Please sign in to access the chat.</div>;
@@ -133,7 +142,7 @@ export default function ChatDetailPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+                if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   handleSend();
                 }

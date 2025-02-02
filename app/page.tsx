@@ -4,9 +4,12 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { db, Chat, ChatMessage } from "@/db/dexie";
 import { Textarea } from "@/components/ui/textarea";
+import { useSidebar } from "@/hooks/useSidebar";
 
 export default function Home() {
   const { data: session } = useSession();
+  const { currentChatId, setCurrentChatId } = useSidebar();
+
   const [chat, setChat] = useState<Chat | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -14,7 +17,7 @@ export default function Home() {
   useEffect(() => {
     if (!session?.user?.email) return;
 
-    // Only load a Home Chat if it already exists (i.e. user has previously sent messages).
+    // Only load a Home Chat if it already exists
     (async function loadExistingHomeChat() {
       const existingChat = await db.chats
         .where({ userId: session.user.email, name: "Home Chat" })
@@ -22,15 +25,17 @@ export default function Home() {
 
       if (existingChat) {
         setChat(existingChat);
-
         const msgs = await db.chatMessages
           .where("chatId")
           .equals(existingChat.id!)
           .sortBy("id");
         setMessages(msgs);
+
+        // If you’d like to highlight it in the sidebar while on `/`, do so:
+        setCurrentChatId(existingChat.id!);
       }
     })();
-  }, [session]);
+  }, [session, setCurrentChatId]);
 
   if (!session) {
     return <div className="p-4">Please sign in to access the chat.</div>;
@@ -52,6 +57,12 @@ export default function Home() {
       });
       newChat = await db.chats.get(newChatId);
       setChat(newChat || null);
+
+      // Dispatch a custom event so the Sidebar refetches chats
+      window.dispatchEvent(new Event("chat-created"));
+
+      // Highlight in the sidebar, even though we remain on `/`
+      if (newChat?.id) setCurrentChatId(newChat.id);
     }
 
     if (!newChat) return; // safety check
@@ -109,7 +120,9 @@ export default function Home() {
             messages.map((msg) => (
               <div
                 key={msg.id}
-                className={`mb-3 ${msg.sender === "bot" ? "text-blue-600" : "text-gray-800"}`}
+                className={`mb-3 ${
+                  msg.sender === "bot" ? "text-blue-600" : "text-gray-800"
+                }`}
               >
                 <div className="font-semibold">
                   {msg.sender === "bot" ? "Bot" : "You"}
