@@ -1,12 +1,12 @@
-// components/ChatInterface.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useSidebar } from "@/hooks/useSidebar";
 import { db } from "@/db/dexie";
 
 import { Textarea } from "@/components/ui/textarea";
+import { Spinner } from "@/components/ui/spinner";
 
 interface Props {
   /**
@@ -33,6 +33,7 @@ export default function ChatInterface({
 }: Props) {
   const { data: session } = useSession();
   const { setCurrentChatId } = useSidebar();
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // We'll store the "real" chatId if/when we create or load from Dexie.
   // If initialChatId is a valid number, we do "persisted mode" right away.
@@ -51,6 +52,26 @@ export default function ChatInterface({
   const [messages, setMessages] = useState<EphemeralMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
+
+  // Focus textarea on mount and updates for new chats
+  useEffect(() => {
+    if (initialChatId === null) {
+      // Try immediate focus
+      textareaRef.current?.focus();
+      
+      // Also try with a small delay to ensure component is fully mounted
+      const timer = setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
+
+      return () => clearTimeout(timer);
+    }
+  }, [initialChatId]);
+
+  // Additional focus when messages change (for both new chats and responses)
+  useEffect(() => {
+    textareaRef.current?.focus();
+  }, [messages]);
 
   // If we already have a numeric chatId (persisted mode),
   // load existing messages from Dexie on mount (and on chatId change).
@@ -96,7 +117,11 @@ export default function ChatInterface({
   }
 
   if (loading) {
-    return <div className="p-4">Loading chat...</div>;
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Spinner size={24} className="text-muted-foreground" />
+      </div>
+    );
   }
 
   // MAIN SEND LOGIC
@@ -117,6 +142,9 @@ export default function ChatInterface({
       });
       setChatId(newChatId);
       setCurrentChatId(newChatId);
+
+      // Focus textarea after creating new chat
+      textareaRef.current?.focus();
 
       // Dispatch so the sidebar updates immediately
       window.dispatchEvent(new Event("chat-created"));
@@ -155,6 +183,9 @@ export default function ChatInterface({
           },
         ]);
         await db.chats.update(newChatId, { updatedAt: botNow });
+        
+        // Focus textarea after bot response
+        textareaRef.current?.focus();
       }, 600);
 
       return;
@@ -197,6 +228,9 @@ export default function ChatInterface({
         },
       ]);
       await db.chats.update(chatId, { updatedAt: botNow });
+
+      // Focus textarea after bot response
+      textareaRef.current?.focus();
     }, 600);
   }
 
@@ -234,6 +268,7 @@ export default function ChatInterface({
         {/* INPUT AREA */}
         <div className="sticky bottom-0 left-0 right-0 bg-background-main px-4">
           <Textarea
+            ref={textareaRef}
             placeholder="Type your message..."
             value={input}
             onChange={(e) => setInput(e.target.value)}

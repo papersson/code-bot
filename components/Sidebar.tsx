@@ -309,7 +309,7 @@ export default function Sidebar() {
                                 <Button
                                   asChild
                                   variant="ghost"
-                                  className="px-0 py-0 flex-1 text-left"
+                                  className="px-0 py-0 flex-1 text-left justify-start"
                                 >
                                   <Link
                                     href={`/chats/${chat.id}`}
@@ -400,7 +400,7 @@ export default function Sidebar() {
                     <Button
                       asChild
                       variant="ghost"
-                      className="px-0 py-0 flex-1 text-left"
+                      className="px-0 py-0 flex-1 text-left justify-start"
                     >
                       <Link
                         href={`/chats/${chat.id}`}

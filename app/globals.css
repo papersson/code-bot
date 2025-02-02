@@ -95,3 +95,8 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+/* Hide Next.js development indicator */
+#__next-build-watcher {
+  display: none;
+}
