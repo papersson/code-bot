@@ -4,9 +4,21 @@ import React, { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { useSidebar } from "@/hooks/useSidebar";
 import { db } from "@/db/dexie";
+import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import remarkGfm from "remark-gfm";
+import type { Components } from "react-markdown";
+import { PencilIcon } from "lucide-react";
 
 import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import { CodeBlock } from "@/components/CodeBlock";
+
+// Import the Azure provider and generateText from the AI SDK
+import { createAzure } from "@ai-sdk/azure";
+import { generateText } from "ai";
 
 interface Props {
   /**
@@ -45,20 +57,34 @@ export default function ChatInterface({
   // until we either convert to Dexie or we are already in Dexie mode.
   interface EphemeralMessage {
     id?: number;
+    tempId?: string;  // Add this field for temporary IDs
     sender: "user" | "bot";
     content: string;
     createdAt: Date;
   }
-  const [messages, setMessages] = useState<EphemeralMessage[]>([]);
+
+  // Add a pending message type to show loading state
+  interface PendingMessage extends EphemeralMessage {
+    pending?: boolean;
+  }
+
+  const [messages, setMessages] = useState<PendingMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [input, setInput] = useState("");
+
+  // Model picker state
+  const [selectedModel, setSelectedModel] = useState("o1");
+
+  // Editing state
+  const [editingMessageId, setEditingMessageId] = useState<number | string | null>(null);
+  const [editInput, setEditInput] = useState("");
 
   // Focus textarea on mount and updates for new chats
   useEffect(() => {
     if (initialChatId === null) {
       // Try immediate focus
       textareaRef.current?.focus();
-      
+
       // Also try with a small delay to ensure component is fully mounted
       const timer = setTimeout(() => {
         textareaRef.current?.focus();
@@ -106,15 +132,10 @@ export default function ChatInterface({
         content: m.content,
         createdAt: m.createdAt || new Date(),
       }));
-      setMessages(ephemeral);
+      setMessages(ephemeral.map((m) => ({ ...m, pending: false })));
       setLoading(false);
     })();
   }, [chatId, session, setCurrentChatId]);
-
-  // If user is not signed in, just show a prompt
-  if (!session?.user?.email) {
-    return <div className="p-4">Please sign in to access the chat.</div>;
-  }
 
   if (loading) {
     return (
@@ -130,109 +151,239 @@ export default function ChatInterface({
     if (!content) return;
     setInput("");
 
-    // If ephemeral => we have chatId == null
-    if (chatId === null) {
+    let currentChatId = chatId;
+    const now = new Date();
+
+    if (currentChatId === null) {
       // FIRST TIME: create a brand-new Dexie chat
-      const now = new Date();
-      const newChatId = await db.chats.add({
+      currentChatId = await db.chats.add({
         userId: session!.user!.email!,
         name: defaultChatName,
         createdAt: now,
         updatedAt: now,
       });
-      setChatId(newChatId);
-      setCurrentChatId(newChatId);
+      setChatId(currentChatId);
+      setCurrentChatId(currentChatId);
 
       // Focus textarea after creating new chat
       textareaRef.current?.focus();
 
       // Dispatch so the sidebar updates immediately
       window.dispatchEvent(new Event("chat-created"));
-
-      // Insert the user message in Dexie
-      const msgId = await db.chatMessages.add({
-        chatId: newChatId,
-        sender: "user",
-        content,
-        createdAt: now,
-        updatedAt: now,
-      });
-      // Also reflect it in ephemeral local state
-      setMessages((prev) => [
-        ...prev,
-        { id: msgId, sender: "user", content, createdAt: now },
-      ]);
-
-      // Fake bot reply
-      setTimeout(async () => {
-        const botNow = new Date();
-        const botMsgId = await db.chatMessages.add({
-          chatId: newChatId,
-          sender: "bot",
-          content: "Hello from your new chat!",
-          createdAt: botNow,
-          updatedAt: botNow,
-        });
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: botMsgId,
-            sender: "bot",
-            content: "Hello from your new chat!",
-            createdAt: botNow,
-          },
-        ]);
-        await db.chats.update(newChatId, { updatedAt: botNow });
-        
-        // Focus textarea after bot response
-        textareaRef.current?.focus();
-      }, 600);
-
-      return;
     }
 
-    // Otherwise, we already have a numeric chatId => fully persisted mode
-    const now = new Date();
+    // At this point, currentChatId is guaranteed to be a number
+    const chatIdForMessages = currentChatId as number;
+
+    // Insert the user message in Dexie
     const msgId = await db.chatMessages.add({
-      chatId,
+      chatId: chatIdForMessages,
       sender: "user",
       content,
       createdAt: now,
       updatedAt: now,
     });
-    await db.chats.update(chatId, { updatedAt: now });
 
-    // Add to ephemeral for immediate UI
+    // Update the chat's updatedAt timestamp
+    await db.chats.update(chatIdForMessages, { updatedAt: now });
+
+    // Also reflect it in ephemeral local state
     setMessages((prev) => [
       ...prev,
-      { id: msgId, sender: "user", content, createdAt: now },
+      { id: msgId, sender: "user", content, createdAt: now, pending: false },
     ]);
 
-    // Simulate bot reply
-    setTimeout(async () => {
+    // Add pending bot message with a temporary ID
+    setMessages((prev) => [
+      ...prev,
+      {
+        sender: "bot",
+        content: "",
+        createdAt: new Date(),
+        pending: true,
+        tempId: `pending-${Date.now()}`
+      },
+    ]);
+
+    // Generate bot reply using Azure AI SDK
+    try {
+      const azure = createAzure({
+        resourceName: process.env.NEXT_PUBLIC_AZURE_RESOURCE_NAME,
+        apiKey: process.env.NEXT_PUBLIC_AZURE_API_KEY,
+        apiVersion: "2024-12-01-preview",
+      });
+      const modelInstance = azure(selectedModel);
+      const { text: botText, usage } = await generateText({
+        model: modelInstance,
+        prompt: content,
+      });
       const botNow = new Date();
       const botMsgId = await db.chatMessages.add({
-        chatId,
+        chatId: chatIdForMessages,
         sender: "bot",
-        content: "Hello again from your existing chat!",
+        content: botText,
         createdAt: botNow,
         updatedAt: botNow,
       });
+      
+      // Replace pending message with actual response
       setMessages((prev) => [
-        ...prev,
-        {
-          id: botMsgId,
-          sender: "bot",
-          content: "Hello again from your existing chat!",
-          createdAt: botNow,
-        },
+        ...prev.slice(0, -1),
+        { id: botMsgId, sender: "bot", content: botText, createdAt: botNow },
       ]);
-      await db.chats.update(chatId, { updatedAt: botNow });
-
-      // Focus textarea after bot response
+      
+      await db.chats.update(chatIdForMessages, { updatedAt: botNow });
+    } catch (error) {
+      // Remove pending message on error
+      setMessages((prev) => prev.slice(0, -1));
+      console.error("Error generating bot reply:", error);
+    } finally {
       textareaRef.current?.focus();
-    }, 600);
+    }
   }
+
+  // Add this new component for message rendering
+  function MessageContent({ content, pending }: { content: string; pending?: boolean }) {
+    if (pending) {
+      return (
+        <div className="flex items-center gap-2">
+          <Spinner size={16} className="text-muted-foreground" />
+          <span className="text-muted-foreground">Thinking...</span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="prose prose-sm dark:prose-invert max-w-none">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]}
+          components={{
+            pre: ({ node, ...props }) => (
+              <div className="relative">
+                {props.children}
+              </div>
+            ),
+            code({ node, className, children, ...props }) {
+              const match = /language-(\w+)/.exec(className || '');
+              const language = match ? match[1] : undefined;
+              const isInline = !match;
+              const code = String(children).replace(/\n$/, '');
+
+              if (isInline) {
+                return (
+                  <code className="bg-muted px-1.5 py-0.5 rounded-md text-sm" {...props}>
+                    {children}
+                  </code>
+                );
+              }
+
+              return (
+                <CodeBlock
+                  value={code}
+                  language={language}
+                  className="my-4"
+                />
+              );
+            },
+          }}
+        >
+          {content}
+        </ReactMarkdown>
+      </div>
+    );
+  }
+
+  // Add function to handle message edit
+  const handleEditSubmit = async (messageId: number) => {
+    if (!editInput.trim()) return;
+    
+    try {
+      // Update the message in the database
+      await db.chatMessages.update(messageId, {
+        content: editInput,
+        updatedAt: new Date(),
+      });
+      
+      // Find the index of the edited message
+      const editedMessageIndex = messages.findIndex(msg => msg.id === messageId);
+      if (editedMessageIndex === -1) return;
+
+      // Remove all messages after the edited message
+      const messagesBeforeEdit = messages.slice(0, editedMessageIndex + 1);
+      
+      // Update the messages state with only messages up to the edited one
+      setMessages(messagesBeforeEdit.map(msg => 
+        msg.id === messageId ? { ...msg, content: editInput } : msg
+      ));
+      
+      // Reset editing state
+      setEditingMessageId(null);
+      setEditInput("");
+
+      // Add pending bot message
+      const now = new Date();
+      setMessages(prev => [...prev, {
+        sender: "bot",
+        content: "",
+        createdAt: now,
+        pending: true,
+        tempId: `pending-${Date.now()}`
+      }]);
+
+      // Delete subsequent messages from the database
+      if (chatId) {
+        const subsequentMessages = await db.chatMessages
+          .where('chatId')
+          .equals(chatId)
+          .filter(msg => msg.id! > messageId)
+          .toArray();
+        
+        await Promise.all(subsequentMessages.map(msg => 
+          db.chatMessages.delete(msg.id!)
+        ));
+      }
+
+      // Generate new bot reply
+      try {
+        const azure = createAzure({
+          resourceName: process.env.NEXT_PUBLIC_AZURE_RESOURCE_NAME,
+          apiKey: process.env.NEXT_PUBLIC_AZURE_API_KEY,
+          apiVersion: "2024-12-01-preview",
+        });
+        const modelInstance = azure(selectedModel);
+        const { text: botText, usage } = await generateText({
+          model: modelInstance,
+          prompt: editInput,
+        });
+        const botNow = new Date();
+        
+        if (chatId) {
+          const botMsgId = await db.chatMessages.add({
+            chatId: chatId,
+            sender: "bot",
+            content: botText,
+            createdAt: botNow,
+            updatedAt: botNow,
+          });
+          
+          // Replace pending message with actual response
+          setMessages((prev) => [
+            ...prev.slice(0, -1),
+            { id: botMsgId, sender: "bot", content: botText, createdAt: botNow },
+          ]);
+          
+          await db.chats.update(chatId, { updatedAt: botNow });
+        }
+      } catch (error) {
+        // Remove pending message on error
+        setMessages((prev) => prev.slice(0, -1));
+        console.error("Error generating bot reply:", error);
+      }
+    } catch (error) {
+      console.error("Error updating message:", error);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full overflow-y-auto">
@@ -243,23 +394,70 @@ export default function ChatInterface({
             {messages.length > 0 ? (
               messages.map((msg) => (
                 <div
-                  key={msg.id}
-                  className={`mb-3 ${
-                    msg.sender === "bot" ? "text-blue-600" : "text-gray-800"
-                  }`}
+                  key={msg.id || msg.tempId}
+                  className={cn(
+                    "mb-6 px-4 py-3 rounded-lg group relative",
+                    msg.sender === "bot" 
+                      ? "bg-background-main" 
+                      : "rounded-xl bg-white dark:bg-zinc-800 shadow-sm border border-zinc-200 dark:border-zinc-700 dark:text-zinc-100"
+                  )}
                 >
-                  <div className="font-semibold">
-                    {msg.sender === "bot" ? "Bot" : "You"}
-                  </div>
-                  <div>{msg.content}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    {msg.createdAt.toLocaleTimeString()}
-                  </div>
+                  {msg.sender === "user" && msg.id && (
+                    <button
+                      onClick={() => {
+                        setEditingMessageId(msg.id!);
+                        setEditInput(msg.content);
+                      }}
+                      className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded"
+                    >
+                      <PencilIcon className="h-4 w-4 text-zinc-500" />
+                    </button>
+                  )}
+                  
+                  {editingMessageId === msg.id ? (
+                    <div className="flex flex-col gap-2">
+                      <Textarea
+                        value={editInput}
+                        onChange={(e) => setEditInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleEditSubmit(msg.id!);
+                          }
+                          if (e.key === "Escape") {
+                            setEditingMessageId(null);
+                            setEditInput("");
+                          }
+                        }}
+                        className="resize-none min-h-[90px] max-h-[200px] w-full p-2"
+                        autoFocus
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          onClick={() => {
+                            setEditingMessageId(null);
+                            setEditInput("");
+                          }}
+                          className="px-3 py-1 text-sm text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleEditSubmit(msg.id!)}
+                          className="px-3 py-1 text-sm bg-blue-500 text-white hover:bg-blue-600 rounded"
+                        >
+                          Save
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <MessageContent content={msg.content} pending={msg.pending} />
+                  )}
                 </div>
               ))
             ) : (
-              <div className="text-sm text-gray-500">
-
+              <div className="text-sm text-muted-foreground">
+                Start the conversation by typing a message below.
               </div>
             )}
           </div>
@@ -267,20 +465,32 @@ export default function ChatInterface({
 
         {/* INPUT AREA */}
         <div className="sticky bottom-0 left-0 right-0 bg-background-main px-4">
-          <Textarea
-            ref={textareaRef}
-            placeholder="Type your message..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSend();
-              }
-            }}
-            className="resize-none min-h-[90px] max-h-[200px]
-                       rounded-t-xl w-full p-4"
-          />
+          <div className="relative">
+            <Textarea
+              ref={textareaRef}
+              placeholder="Type your message..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              className="resize-none min-h-[90px] max-h-[200px] rounded-t-xl w-full p-4 pb-12"
+            />
+            <div className="absolute bottom-2 right-3">
+              <Select value={selectedModel} onValueChange={setSelectedModel}>
+                <SelectTrigger className="h-7 w-[100px] border-none shadow-none text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus:ring-0 focus:ring-offset-0 focus:border-none focus:outline-none flex justify-end">
+                  <SelectValue className="text-right" placeholder="Select model" />
+                </SelectTrigger>
+                <SelectContent className="border border-input/20 bg-background/95 shadow-md overflow-hidden">
+                  <SelectItem value="o1" className="text-xs text-right">o1</SelectItem>
+                  <SelectItem value="o1-mini" className="text-xs text-right">o1-mini</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </div>
       </div>
     </div>
