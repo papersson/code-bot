@@ -13,23 +13,21 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-full w-full overflow-hidden bg-secondary">
       {isOpen && <Sidebar />}
+      {/* Toggle sidebar button positioned between sidebar and main content */}
+      <div className="relative z-10 -ml-3 pl-3">
+        <button
+          onClick={() => setIsOpen((prev) => !prev)}
+          className="absolute top-6 left-6 flex h-8 w-8 items-center justify-center
+                     bg-background-main text-accent-foreground hover:text-zinc-400"
+        >
+          {isOpen ? (
+            <ChevronLeft className="h-5 w-5" />
+          ) : (
+            <ChevronRight className="h-5 w-5" />
+          )}
+        </button>
+      </div>
       <main className="flex-1 rounded-xl border border-zinc-200 bg-main-background mt-2 ml-0 mr-2 mb-1">
-        {/* Toggle sidebar: Just an icon, no text */}
-        <div className="p-2">
-          <button
-            onClick={() => setIsOpen((prev) => !prev)}
-            className="inline-flex items-center justify-center p-2
-                       text-accent-foreground 
-                       hover:opacity-90 rounded-md"
-          >
-            {isOpen ? (
-              <ChevronLeft className="w-4 h-4 bg-background-main text-accent-foreground" />
-            ) : (
-              <ChevronRight className="w-4 h-4 bg-background-main text-accent-foreground" />
-            )}
-          </button>
-        </div>
-
         <div className="h-full overflow-y-auto rounded-xl">
           {children}
         </div>

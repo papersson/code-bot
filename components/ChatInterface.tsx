@@ -203,10 +203,10 @@ export default function ChatInterface({
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] overflow-y-auto">
-      <div className="flex flex-col h-full max-w-3xl mx-auto w-full relative">
+    <div className="flex flex-col h-full overflow-y-auto">
+      <div className="flex flex-col h-full max-w-3xl mx-auto w-full relative px-4 pb-4">
         {/* MESSAGES */}
-        <div className="flex-1 p-4 pb-[120px]">
+        <div className="flex-1 pt-8">
           {messages.length > 0 ? (
             messages.map((msg) => (
               <div
@@ -234,26 +234,21 @@ export default function ChatInterface({
         </div>
 
         {/* INPUT AREA */}
-        <div className="fixed bottom-0 left-0 right-0">
-          <div className="max-w-3xl mx-auto w-full px-4">
-            <div className="flex items-center gap-2">
-              <Textarea
-                placeholder="Type your message..."
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                className="resize-none bg-background-main min-h-[90px] max-h-[200px]
-                           rounded-t-xl w-full border p-4"
-              />
-              {/* <Button variant="outline" className="h-9" onClick={handleSend}>
-                <Send className="w-4 h-4" />
-              </Button> */}
-            </div>
+        <div className="sticky bottom-0 left-0 right-0 bg-background-main pt-4 ">
+          <div className="flex items-center gap-2">
+            <Textarea
+              placeholder="Type your message..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              className="resize-none min-h-[90px] max-h-[200px]
+                         rounded-t-xl w-full border p-4"
+            />
           </div>
         </div>
       </div>

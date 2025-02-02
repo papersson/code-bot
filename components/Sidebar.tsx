@@ -54,7 +54,7 @@ export default function Sidebar() {
     if (!userEmail) return;
 
     async function loadData() {
-      const allChats = await db.chats.where("userId").equals(userEmail).toArray();
+      const allChats = await db.chats.where("userId").equals(userEmail as string).toArray();
 
       // separate unassigned from assigned
       const unassigned = allChats
@@ -207,7 +207,7 @@ export default function Sidebar() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create a new project</DialogTitle>
-              <DialogDescription>Give it a name, e.g. “Mobile App.”</DialogDescription>
+              <DialogDescription>Give it a name, e.g. "Mobile App."</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <Input
