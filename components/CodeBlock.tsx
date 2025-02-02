@@ -34,9 +34,12 @@ export function CodeBlock({ language, value, className }: CodeBlockProps) {
         maxWidth: "700px",
         overflowX: "auto",
       }}
-      className={cn("relative group bg-[#282828] shadow-md rounded-xl", className)}
+      className={cn(
+        "code-block-container relative group bg-[#282828] shadow-md rounded-xl",
+        className
+      )}
     >
-      <div className="sticky top-0 z-10 rounded-t-xl bg-[#282828] border border-[#3c3836]">
+      <div className="sticky top-0 z-20 rounded-t-xl bg-[#282828] border border-[#3c3836]">
         <div className="flex items-center justify-between px-4 py-2 bg-[#1d2021] border-b border-[#3c3836] rounded-t-xl">
           <div className="flex items-center gap-2">
             <div className="flex gap-1.5">

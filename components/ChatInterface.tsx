@@ -541,17 +541,16 @@ export default function ChatInterface({
                 <div
                   key={msg.id || msg.tempId}
                   className={cn(
-                    // ADDING `min-w-0` here on the outer flex container:
                     "mb-6 group relative flex items-start justify-between gap-2 min-w-0",
                     msg.sender === "bot"
-                      ? "bg-background-main rounded-lg p-4"
+                      ? "bg-background-main rounded-lg p-4 [&_.code-block-container]:!overflow-visible"
                       : editingMessageId === msg.id
                       ? "bg-background-main dark:bg-zinc-800 p-4"
                       : "bg-white dark:bg-zinc-800 shadow-sm border border-zinc-200 dark:border-zinc-700 dark:text-zinc-100 rounded-xl p-4"
                   )}
                 >
                   {/* Also `min-w-0` for the flex child: */}
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 [&_.code-block-container]:relative [&_.code-block-container]:!overflow-visible">
                     {editingMessageId === msg.id ? (
                       <div className="flex flex-col gap-4">
                         <div className="rounded-xl border border-zinc-200 dark:border-zinc-700 shadow-sm">
