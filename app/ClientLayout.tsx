@@ -3,25 +3,30 @@
 import React from "react";
 import { SessionProvider } from "next-auth/react";
 import { SidebarProvider, useSidebar } from "@/hooks/useSidebar";
-import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import Sidebar from "@/components/Sidebar";
-import { cn } from "@/lib/utils"; // for optional tailwind merges if needed
+import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 function Shell({ children }: { children: React.ReactNode }) {
-  // Access the sidebar context
   const { isOpen, setIsOpen } = useSidebar();
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-secondary">
       {isOpen && <Sidebar />}
       <main className="flex-1 rounded-xl border border-zinc-200 bg-main-background mt-2 ml-0 mr-2 mb-1">
-        {/* Example button to toggle sidebar */}
+        {/* Toggle sidebar: Just an icon, no text */}
         <div className="p-2">
           <button
             onClick={() => setIsOpen((prev) => !prev)}
-            className="px-3 py-2 rounded-md bg-accent text-accent-foreground"
+            className="inline-flex items-center justify-center p-2
+                       text-accent-foreground 
+                       hover:opacity-90 rounded-md"
           >
-            Toggle Sidebar
+            {isOpen ? (
+              <ChevronLeft className="w-4 h-4 bg-background-main text-accent-foreground" />
+            ) : (
+              <ChevronRight className="w-4 h-4 bg-background-main text-accent-foreground" />
+            )}
           </button>
         </div>
 
