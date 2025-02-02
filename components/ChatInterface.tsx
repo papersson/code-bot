@@ -7,8 +7,6 @@ import { useSidebar } from "@/hooks/useSidebar";
 import { db } from "@/db/dexie";
 
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Send } from "lucide-react";
 
 interface Props {
   /**
@@ -81,9 +79,9 @@ export default function ChatInterface({
         .sortBy("id");
 
       // Convert Dexie messages to ephemeral
-      const ephemeral = storedMessages.map((m) => ({
+      const ephemeral: EphemeralMessage[] = storedMessages.map((m) => ({
         id: m.id,
-        sender: m.sender === "bot" ? "bot" : "user",
+        sender: m.sender as "bot" | "user",
         content: m.content,
         createdAt: m.createdAt || new Date(),
       }));
@@ -93,7 +91,7 @@ export default function ChatInterface({
   }, [chatId, session, setCurrentChatId]);
 
   // If user is not signed in, just show a prompt
-  if (!session) {
+  if (!session?.user?.email) {
     return <div className="p-4">Please sign in to access the chat.</div>;
   }
 
@@ -112,7 +110,7 @@ export default function ChatInterface({
       // FIRST TIME: create a brand-new Dexie chat
       const now = new Date();
       const newChatId = await db.chats.add({
-        userId: session.user.email!,
+        userId: session!.user!.email!,
         name: defaultChatName,
         createdAt: now,
         updatedAt: now,
@@ -246,7 +244,7 @@ export default function ChatInterface({
               }
             }}
             className="resize-none min-h-[90px] max-h-[200px]
-                       rounded-t-xl w-full border p-4"
+                       rounded-t-xl w-full p-4"
           />
         </div>
       </div>

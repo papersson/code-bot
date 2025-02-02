@@ -15,7 +15,7 @@ export default function ChatsIndexPage() {
 
     (async () => {
       // For example, just pick the last chat (or any chat).
-      const userEmail = session.user.email;
+      const userEmail = session!.user!.email!;
       const userChats = await db.chats.where("userId").equals(userEmail).toArray();
       if (userChats.length > 0) {
         router.replace(`/chats/${userChats[userChats.length - 1].id}`);

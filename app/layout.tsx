@@ -1,6 +1,5 @@
 import "./globals.css";
 import { Inter } from "next/font/google";
-import { ReactNode } from "react";
 import ClientLayout from "./ClientLayout";
 
 const inter = Inter({ subsets: ["latin"] });

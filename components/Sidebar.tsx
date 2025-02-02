@@ -27,7 +27,7 @@ import { Plus, Folder, Pencil, X, LogIn, LogOut } from "lucide-react";
 export default function Sidebar() {
   const { data: session } = useSession();
   const router = useRouter();
-  const { currentChatId } = useSidebar();
+  const { currentChatId, isOpen } = useSidebar();
 
   const userEmail = session?.user?.email;
 
@@ -194,7 +194,12 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-72 bg-secondary text-secondary-foreground p-4 flex flex-col overflow-y-auto">
+    <aside className={`
+      w-72 bg-secondary text-secondary-foreground p-4 
+      flex flex-col overflow-y-auto
+      transition-[width,opacity,transform] duration-200 ease-in-out
+      ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 w-0'}
+    `}>
       {/* PROJECTS */}
       <div className="flex items-center justify-between mb-2">
         <h2 className="font-bold text-sm">Projects</h2>
@@ -207,7 +212,7 @@ export default function Sidebar() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create a new project</DialogTitle>
-              <DialogDescription>Give it a name, e.g. "Mobile App."</DialogDescription>
+              <DialogDescription>Give it a name, e.g. &quot;Mobile App.&quot;</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <Input
