@@ -425,8 +425,8 @@ export default function ChatInterface({
 
         {/* Input area */}
         <div className="sticky bottom-0 left-0 right-0 bg-background-main z-50">
-          <div className="relative px-4">
-            <div className="absolute right-8 top-2 flex items-center z-10">
+          <div className="relative px-4 ">
+            <div className="absolute right-8  flex items-center z-10">
               <Select value={selectedModel} onValueChange={setSelectedModel}>
                 <SelectTrigger className="h-8 px-3 text-xs shadow-none hover:text-primary border-none rounded-lg hover:scale-105 focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:outline-none [&>span]:gap-3">
                   <SelectValue
@@ -458,7 +458,7 @@ export default function ChatInterface({
                   handleSend();
                 }
               }}
-              className="resize-none min-h-[120px] max-h-[200px] rounded-t-xl w-full px-4 pt-4 pb-4"
+              className="resize-none min-h-[120px] max-h-[200px] rounded-t-xl w-full px-4 pt-6 pb-4"
             />
           </div>
         </div>
