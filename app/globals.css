@@ -41,6 +41,9 @@ body {
     --input: 252 20% 90%;
     --ring: 252 65% 50%;
     
+    /* Border radius */
+    --radius: 0.75rem; /* 12px */
+    
     /* Sidebar specific colors */
     --sidebar-background: 252 25% 96%;
     --sidebar-foreground: 250 36% 26%;

@@ -60,7 +60,7 @@ function ChatItem({
       draggable
       onDragStart={(e) => onDragStart(e, chat)}
       className={`
-        group flex items-center rounded-md px-2 py-1.5
+        group flex items-center rounded-lg px-2 py-1.5
         cursor-grab transition-all duration-200
         ${active ? "bg-accent text-accent-foreground shadow-sm" : "hover:bg-accent/20"}
       `}
@@ -70,12 +70,13 @@ function ChatItem({
           <Input
             value={renameValue}
             onChange={(e) => setRenameValue(e.target.value)}
-            className="h-8"
+            className="h-8 rounded-lg"
           />
           <Button
             variant="secondary"
             size="sm"
             onClick={() => commitRename(chat.id!)}
+            className="rounded-lg"
           >
             Save
           </Button>
@@ -83,6 +84,7 @@ function ChatItem({
             variant="destructive"
             size="sm"
             onClick={cancelRename}
+            className="rounded-lg"
           >
             Cancel
           </Button>
@@ -90,12 +92,14 @@ function ChatItem({
       ) : (
         <div className="flex justify-between items-center w-full">
           <div className="flex-1 flex items-center gap-2">
-            <MessageSquare className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+            <div className="p-1 rounded-full bg-blue-100/50 dark:bg-blue-900/20">
+              <MessageSquare className="w-3.5 h-3.5 shrink-0 text-blue-500/70" />
+            </div>
             <Button
               asChild
               variant="ghost"
               className={`
-                px-2 py-0 flex-1 text-left justify-start h-auto
+                px-0 py-0 flex-1 text-left justify-start h-auto rounded-lg
                 ${active ? "hover:bg-accent/90" : "hover:bg-accent/30"}
                 transition-colors duration-200
               `}
@@ -112,7 +116,7 @@ function ChatItem({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0 hover:bg-accent/50"
+              className="h-7 w-7 p-0 hover:bg-accent/50 rounded-lg"
               onClick={() => onRename(chat.id!, chat.name || `Chat #${chat.id}`)}
             >
               <Pencil className="w-3.5 h-3.5" />
@@ -120,7 +124,7 @@ function ChatItem({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 w-7 p-0 hover:bg-red-100 dark:hover:bg-red-900/30"
+              className="h-7 w-7 p-0 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg"
               onClick={() => onDelete(chat.id!)}
             >
               <X className="w-3.5 h-3.5 text-red-500 hover:text-red-600" />
@@ -363,16 +367,18 @@ export default function Sidebar() {
               <AccordionItem key={proj.id} value={`project-${proj.id}`}>
                 <div className="flex items-center justify-between group">
                   <AccordionTrigger className="text-sm p-0 flex-1 hover:no-underline data-[state=open]:text-accent-foreground [&[data-state=open]>div>svg:first-child]:rotate-90 [&>svg]:hidden">
-                    <div className="flex items-center gap-2 w-full pr-2 py-1.5 rounded-md transition-colors hover:bg-accent/20">
+                    <div className="flex items-center gap-2 w-full pr-2 py-1.5 rounded-lg transition-colors hover:bg-accent/20">
                       <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 text-muted-foreground" />
-                      <Folder className="w-3.5 h-3.5 text-muted-foreground" />
+                      <div className="p-1 rounded-full bg-amber-100/50 dark:bg-amber-900/20">
+                        <Folder className="w-3.5 h-3.5 text-amber-500/70" />
+                      </div>
                       <span className="truncate">{proj.name}</span>
                     </div>
                   </AccordionTrigger>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg"
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteProject(proj.id!);
@@ -428,7 +434,7 @@ export default function Sidebar() {
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 w-7 p-0"
+          className="h-7 w-7 p-0 rounded-lg"
           onClick={handleNewChat}
         >
           <Plus className="w-3.5 h-3.5" />
@@ -465,7 +471,7 @@ export default function Sidebar() {
         <Button
           variant="outline"
           size="sm"
-          className="flex items-center justify-center p-2"
+          className="flex items-center justify-center p-2 rounded-lg"
           onClick={() => signOut()}
         >
           <LogOut className="w-4 h-4" />
