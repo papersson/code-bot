@@ -39,7 +39,7 @@ export default function ChatInterface({
   const [input, setInput] = useState("");
 
   // Default to "o3-mini" because "o1" can't stream in this code
-  const [selectedModel, setSelectedModel] = useState("o3-mini");
+  const [selectedModel, setSelectedModel] = useState("o3-mini-high");
 
   // For editing existing user messages
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
@@ -401,8 +401,11 @@ export default function ChatInterface({
                   <SelectValue className="text-right text-muted-foreground pr-4" placeholder="Model" />
                 </SelectTrigger>
                 <SelectContent className="min-w-[100px] border border-input/20 bg-background/95 backdrop-blur-sm shadow-lg">
-                  <SelectItem value="o3-mini" className="text-xs">
-                    o3-mini
+                  <SelectItem value="o3-mini-low" className="text-xs">
+                    o3-mini (Low)
+                  </SelectItem>
+                  <SelectItem value="o3-mini-high" className="text-xs">
+                    o3-mini (High)
                   </SelectItem>
                   <SelectItem value="o1" className="text-xs">
                     o1
@@ -421,7 +424,7 @@ export default function ChatInterface({
                   handleSend();
                 }
               }}
-              className="resize-none min-h-[90px] max-h-[200px] rounded-t-xl w-full px-4 pt-12 pb-4"
+              className="resize-none min-h-[120px] max-h-[200px] rounded-t-xl w-full px-4 pt-8 pb-4"
             />
           </div>
         </div>

@@ -12,9 +12,9 @@ You are an AI assistant.
 
 You uses markdown for code.
 
-You use Markdown formatting. When using Markdown, you always follows best practices for clarity and consistency. You always uses a single space after hash symbols for headers (e.g., ”# Header 1”) and leaves a blank line before and after headers, lists, and code blocks. For emphasis, you uses asterisks or underscores consistently (e.g., italic or bold). When creating lists, you aligns items properly and uses a single space after the list marker. For nested bullets in bullet point lists, you uses two spaces before the asterisk (*) or hyphen (-) for each level of nesting. For nested bullets in numbered lists, you uses three spaces before the number and period (e.g., “1.”) for each level of nesting.
+You use Markdown formatting. When using Markdown, you always follows best practices for clarity and consistency. You always uses a single space after hash symbols for headers (e.g., "# Header 1") and leaves a blank line before and after headers, lists, and code blocks. For emphasis, you uses asterisks or underscores consistently (e.g., italic or bold). When creating lists, you aligns items properly and uses a single space after the list marker. For nested bullets in bullet point lists, you uses two spaces before the asterisk (*) or hyphen (-) for each level of nesting. For nested bullets in numbered lists, you uses three spaces before the number and period (e.g., "1.") for each level of nesting.
 
-If you provide bullet points in its response, each bullet point should be at least 1-2 sentences long unless the human requests otherwise. You should not use bullet points or numbered lists unless the human explicitly asks for a list and should instead write in prose and paragraphs without any lists, i.e. its prose should never include bullets or numbered lists anywhere. Inside prose, it writes lists in natural language like “some things include: x, y, and z” with no bullet points, numbered lists, or newlines.
+If you provide bullet points in its response, each bullet point should be at least 1-2 sentences long unless the human requests otherwise. You should not use bullet points or numbered lists unless the human explicitly asks for a list and should instead write in prose and paragraphs without any lists, i.e. its prose should never include bullets or numbered lists anywhere. Inside prose, it writes lists in natural language like "some things include: x, y, and z" with no bullet points, numbered lists, or newlines.
 `;
 
 export async function POST(req: NextRequest) {
@@ -40,14 +40,29 @@ export async function POST(req: NextRequest) {
       apiVersion: "2024-12-01-preview",
     });
 
-    const modelInstance = azure(model);
+    // Model configuration mapping
+    const MODEL_CONFIG = {
+      'o3-mini-low': {
+        baseModel: 'o3-mini',
+        providerOptions: { azure: { reasoningEffort: 'low' } }
+      },
+      'o3-mini-high': {
+        baseModel: 'o3-mini',
+        providerOptions: { azure: { reasoningEffort: 'high' } }
+      }
+    } as const;
+
+    // Get model configuration or use default
+    const config = MODEL_CONFIG[model as keyof typeof MODEL_CONFIG];
+    const modelInstance = azure(config?.baseModel || model);
 
     // Stream text from the model
     const result = await streamText({
       model: modelInstance,
       messages,
       system: SYSTEM_PROMPT,
-      experimental_transform: smoothStream()
+      experimental_transform: smoothStream(),
+      ...(config?.providerOptions && { providerOptions: config.providerOptions })
       // temperature: 0.7, etc.
     });
 
