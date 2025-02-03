@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { db, Chat, Project } from "@/db/dexie";
+import { db, Chat, Project, clearAllLocalData } from "@/db/dexie";
 import { useSidebar } from "@/hooks/useSidebar";
 
 // Shadcn UI
@@ -28,7 +28,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 
 // Lucide icons
-import { Plus, Folder, Pencil, X, LogIn, LogOut, MessageSquare, ChevronRight } from "lucide-react";
+import { Plus, Folder, Pencil, X, LogIn, LogOut, MessageSquare, Trash2 } from "lucide-react";
 
 interface ChatItemProps {
   chat: Chat;
@@ -44,19 +44,19 @@ interface ChatItemProps {
 }
 
 function formatTimestamp(date: Date | undefined) {
-  if (!date) return '';
+  if (!date) return "";
   const now = new Date();
   const diff = now.getTime() - date.getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  
+
   if (days === 0) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   } else if (days === 1) {
-    return 'Yesterday';
+    return "Yesterday";
   } else if (days < 7) {
-    return date.toLocaleDateString([], { weekday: 'short' });
+    return date.toLocaleDateString([], { weekday: "short" });
   } else {
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString([], { month: "short", day: "numeric" });
   }
 }
 
@@ -199,7 +199,7 @@ export default function Sidebar() {
         .toArray();
 
       // Convert date strings to Date objects
-      allChats.forEach(chat => {
+      allChats.forEach((chat) => {
         if (chat.createdAt) chat.createdAt = new Date(chat.createdAt);
         if (chat.updatedAt) chat.updatedAt = new Date(chat.updatedAt);
       });
@@ -217,9 +217,9 @@ export default function Sidebar() {
           if (!grouped[pid]) grouped[pid] = [];
           grouped[pid].push(chat);
         });
-      
+
       // Sort chats within each project
-      Object.values(grouped).forEach(chats => chats.sort(sortByRecent));
+      Object.values(grouped).forEach((chats) => chats.sort(sortByRecent));
       setProjectChats(grouped);
 
       // load projects
@@ -238,6 +238,17 @@ export default function Sidebar() {
     window.addEventListener("chat-created", handleChatCreated);
     return () => {
       window.removeEventListener("chat-created", handleChatCreated);
+    };
+  }, []);
+
+  // Listen for "chat-updated" event
+  useEffect(() => {
+    function handleChatUpdated() {
+      setReloadKey((prev) => prev + 1);
+    }
+    window.addEventListener("chat-updated", handleChatUpdated);
+    return () => {
+      window.removeEventListener("chat-updated", handleChatUpdated);
     };
   }, []);
 
@@ -332,9 +343,7 @@ export default function Sidebar() {
   async function deleteProject(projectId: number) {
     // unassign all chats in that project
     const pChats = await db.chats.where("projectId").equals(projectId).toArray();
-    await Promise.all(
-      pChats.map((c) => db.chats.update(c.id!, { projectId: null }))
-    );
+    await Promise.all(pChats.map((c) => db.chats.update(c.id!, { projectId: null })));
 
     await db.projects.delete(projectId);
     setReloadKey((prev) => prev + 1);
@@ -356,6 +365,14 @@ export default function Sidebar() {
   function cancelProjectRename() {
     setRenamingProjectId(null);
     setProjectRenameValue("");
+  }
+
+  async function handleClearData() {
+    if (confirm("Are you sure you want to clear all data? This cannot be undone.")) {
+      await clearAllLocalData();
+      setReloadKey(prev => prev + 1);
+      router.push('/');
+    }
   }
 
   return (
@@ -407,9 +424,7 @@ export default function Sidebar() {
       </div>
 
       {projects.length === 0 ? (
-        <p className="text-xs text-muted-foreground mb-2">
-          No projects yet.
-        </p>
+        <p className="text-xs text-muted-foreground mb-2">No projects yet.</p>
       ) : (
         <Accordion
           type="multiple"
@@ -538,18 +553,18 @@ export default function Sidebar() {
         </Button>
       </div>
 
-      <div 
+      <div
         className="space-y-0.5 min-h-[100px] rounded-lg transition-colors"
         onDragOver={(e) => {
           e.preventDefault();
-          e.currentTarget.classList.add('bg-accent/10');
+          e.currentTarget.classList.add("bg-accent/10");
         }}
         onDragLeave={(e) => {
-          e.currentTarget.classList.remove('bg-accent/10');
+          e.currentTarget.classList.remove("bg-accent/10");
         }}
         onDrop={async (e) => {
           e.preventDefault();
-          e.currentTarget.classList.remove('bg-accent/10');
+          e.currentTarget.classList.remove("bg-accent/10");
           const chatIdStr = e.dataTransfer.getData("text/plain");
           const chatId = Number(chatIdStr);
           if (!chatId) return;
@@ -581,17 +596,28 @@ export default function Sidebar() {
       </div>
 
       {/* FOOTER */}
-      <div className="mt-auto pt-4 border-t border-muted-foreground flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">
-          Signed in as {session.user?.email}
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex items-center justify-center p-2 rounded-lg"
-          onClick={() => signOut()}
+      <div className="mt-auto pt-4 border-t border-muted-foreground">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs text-muted-foreground">
+            Signed in as {session.user?.email}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex items-center justify-center p-2 rounded-lg"
+            onClick={() => signOut()}
+          >
+            <LogOut className="w-4 h-4" />
+          </Button>
+        </div>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={handleClearData}
+          className="w-full text-xs text-red-500 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30"
         >
-          <LogOut className="w-4 h-4" />
+          <Trash2 className="w-3.5 h-3.5 mr-2" />
+          Clear All Data
         </Button>
       </div>
     </aside>
