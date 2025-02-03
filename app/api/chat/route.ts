@@ -40,9 +40,7 @@ export async function POST(req: NextRequest) {
       apiVersion: "2024-12-01-preview",
     });
 
-    // "o1" doesn’t stream -> fallback:
-    const chosenModel = model === "o1" ? "o3-mini" : model || "o3-mini";
-    const modelInstance = azure(chosenModel);
+    const modelInstance = azure(model);
 
     // Stream text from the model
     const result = await streamText({
