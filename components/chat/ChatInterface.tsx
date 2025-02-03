@@ -364,7 +364,7 @@ export default function ChatInterface({
     <div className="flex flex-col h-full min-w-0 overflow-y-auto">
       <div className="relative flex flex-col min-h-full max-w-3xl mx-auto w-full min-w-0">
         <div className="flex-1 min-w-0">
-          <div className="pt-8 pb-[120px] px-4 min-w-0">
+          <div className="pt-8 px-4 min-w-0">
             {messages.length > 0 ? (
               messages.map((msg) => (
                 <ChatMessageItem
@@ -424,7 +424,7 @@ export default function ChatInterface({
                   handleSend();
                 }
               }}
-              className="resize-none min-h-[120px] max-h-[200px] rounded-t-xl w-full px-4 pt-8 pb-4"
+              className="resize-none min-h-[120px] max-h-[200px] rounded-t-xl w-full px-4 pt-4 pb-4"
             />
           </div>
         </div>
