@@ -43,6 +43,23 @@ interface ChatItemProps {
   onDragStart: (e: React.DragEvent<HTMLDivElement>, chat: Chat) => void;
 }
 
+function formatTimestamp(date: Date | undefined) {
+  if (!date) return '';
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  
+  if (days === 0) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } else if (days === 1) {
+    return 'Yesterday';
+  } else if (days < 7) {
+    return date.toLocaleDateString([], { weekday: 'short' });
+  } else {
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  }
+}
+
 function ChatItem({
   chat,
   active,
@@ -55,6 +72,8 @@ function ChatItem({
   cancelRename,
   onDragStart,
 }: ChatItemProps) {
+  const timestamp = chat.updatedAt || chat.createdAt;
+
   return (
     <div
       draggable
@@ -93,22 +112,29 @@ function ChatItem({
         <div className="flex justify-between items-center w-full">
           <div className="flex-1 flex items-center gap-2">
             <MessageSquare className="w-3.5 h-3.5 shrink-0 text-blue-400 fill-current" />
-            <Button
-              asChild
-              variant="ghost"
-              className={`
-                px-0 py-0 flex-1 text-left justify-start h-auto rounded-lg
-                ${active ? "hover:bg-accent/90" : "hover:bg-accent/30"}
-                transition-colors duration-200
-              `}
-            >
-              <Link
-                href={`/chats/${chat.id}`}
-                className="text-sm overflow-hidden text-ellipsis whitespace-nowrap"
+            <div className="flex-1 min-w-0">
+              <Button
+                asChild
+                variant="ghost"
+                className={`
+                  px-0 py-0 flex-1 text-left justify-start h-auto rounded-lg w-full
+                  ${active ? "hover:bg-accent/90" : "hover:bg-accent/30"}
+                  transition-colors duration-200
+                `}
               >
-                {chat.name || `Chat #${chat.id}`}
-              </Link>
-            </Button>
+                <Link
+                  href={`/chats/${chat.id}`}
+                  className="text-sm overflow-hidden text-ellipsis whitespace-nowrap"
+                >
+                  {chat.name || `Chat #${chat.id}`}
+                </Link>
+              </Button>
+              {timestamp && (
+                <div className="text-[10px] text-muted-foreground/70 pl-0.5">
+                  {formatTimestamp(timestamp)}
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
             <Button
@@ -172,6 +198,12 @@ export default function Sidebar() {
         .equals(userEmail as string)
         .toArray();
 
+      // Convert date strings to Date objects
+      allChats.forEach(chat => {
+        if (chat.createdAt) chat.createdAt = new Date(chat.createdAt);
+        if (chat.updatedAt) chat.updatedAt = new Date(chat.updatedAt);
+      });
+
       // separate unassigned from assigned
       const unassigned = allChats.filter((c) => !c.projectId).sort(sortByRecent);
       setRecentChats(unassigned);
@@ -180,12 +212,14 @@ export default function Sidebar() {
       const grouped: Record<number, Chat[]> = {};
       allChats
         .filter((c) => c.projectId)
-        .sort(sortByRecent)
         .forEach((chat) => {
           const pid = chat.projectId as number;
           if (!grouped[pid]) grouped[pid] = [];
           grouped[pid].push(chat);
         });
+      
+      // Sort chats within each project
+      Object.values(grouped).forEach(chats => chats.sort(sortByRecent));
       setProjectChats(grouped);
 
       // load projects
@@ -208,9 +242,9 @@ export default function Sidebar() {
   }, []);
 
   function sortByRecent(a: Chat, b: Chat) {
-    const ad = a.updatedAt ?? a.createdAt ?? 0;
-    const bd = b.updatedAt ?? b.createdAt ?? 0;
-    return new Date(bd).getTime() - new Date(ad).getTime();
+    const aTime = (a.updatedAt || a.createdAt)?.getTime() || 0;
+    const bTime = (b.updatedAt || b.createdAt)?.getTime() || 0;
+    return bTime - aTime;
   }
 
   // If not signed in
@@ -504,9 +538,29 @@ export default function Sidebar() {
         </Button>
       </div>
 
-      <div className="space-y-0.5">
+      <div 
+        className="space-y-0.5 min-h-[100px] rounded-lg transition-colors"
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.currentTarget.classList.add('bg-accent/10');
+        }}
+        onDragLeave={(e) => {
+          e.currentTarget.classList.remove('bg-accent/10');
+        }}
+        onDrop={async (e) => {
+          e.preventDefault();
+          e.currentTarget.classList.remove('bg-accent/10');
+          const chatIdStr = e.dataTransfer.getData("text/plain");
+          const chatId = Number(chatIdStr);
+          if (!chatId) return;
+
+          const now = new Date();
+          await db.chats.update(chatId, { projectId: null, updatedAt: now });
+          setReloadKey((prev) => prev + 1);
+        }}
+      >
         {recentChats.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No unassigned chats.</p>
+          <p className="text-xs text-muted-foreground p-2">No unassigned chats.</p>
         ) : (
           recentChats.map((chat) => (
             <ChatItem
