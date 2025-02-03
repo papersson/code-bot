@@ -17,13 +17,14 @@ import { EphemeralMessage } from "./types";
 import { ChatMessageItem } from "./ChatMessageItem";
 
 interface Props {
-  initialChatId: number | null;
+  initialChatId: number; // must be a real numeric ID
   defaultChatName?: string;
 }
 
 /**
- * Main chat component: loads messages from Dexie, streams AI responses,
- * and handles user input, editing, etc.
+ * Main chat component: No ephemeral logic.
+ * If we can’t find the chat in Dexie, we show a "Not found" message.
+ * Otherwise, we handle the streaming plus post-first-message title generation.
  */
 export default function ChatInterface({
   initialChatId,
@@ -33,44 +34,42 @@ export default function ChatInterface({
   const { setCurrentChatId } = useSidebar();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const [chatId, setChatId] = useState<number | null>(initialChatId);
+  const [chatId] = useState<number>(initialChatId); // fixed
   const [messages, setMessages] = useState<EphemeralMessage[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [input, setInput] = useState("");
-
-  // Default to "o3-mini-high" for normal conversation
-  const [selectedModel, setSelectedModel] = useState("o3-mini-high");
 
   // For editing existing user messages
   const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
   const [editInput, setEditInput] = useState("");
 
-  // Focus the textarea once if ephemeral
+  // Default to "o3-mini-high" for normal conversation
+  const [selectedModel, setSelectedModel] = useState("o3-mini-high");
+
+  // Check DB for the chat record
+  const [chatExists, setChatExists] = useState(true);
+  const [chatName, setChatName] = useState(defaultChatName);
+
+  // On mount, load from Dexie
   useEffect(() => {
-    if (initialChatId === null) {
-      textareaRef.current?.focus();
+    if (!session?.user?.email) {
+      setLoading(false);
+      return;
     }
-  }, [initialChatId]);
-
-  // Load messages from Dexie if we have a numeric chatId
-  useEffect(() => {
-    if (!session?.user?.email) return;
-    if (chatId === null) return; // ephemeral => skip DB load
     setLoading(true);
-
     (async () => {
-      const existingChat = await db.chats.get(chatId!);
-      if (!existingChat) {
-        setMessages([]);
+      const chat = await db.chats.get(chatId);
+      if (!chat) {
+        setChatExists(false);
         setLoading(false);
         return;
       }
-
-      setCurrentChatId(chatId!);
+      setCurrentChatId(chatId);
+      setChatName(chat.name || defaultChatName);
 
       const stored = await db.chatMessages
         .where("chatId")
-        .equals(chatId!)
+        .equals(chatId)
         .sortBy("id");
 
       const ephemeral: EphemeralMessage[] = stored.map((m) => ({
@@ -83,9 +82,9 @@ export default function ChatInterface({
       setMessages(ephemeral);
       setLoading(false);
     })();
-  }, [chatId, session, setCurrentChatId]);
+  }, [chatId, session, setCurrentChatId, defaultChatName]);
 
-  // Helper: Convert ephemeral messages to { role, content } for the API body
+  // Convert ephemeral messages to { role, content } for the API body
   function mapToApiMessages(msgs: EphemeralMessage[]) {
     return msgs.map((m) => ({
       role: m.sender === "user" ? "user" : "assistant",
@@ -94,19 +93,14 @@ export default function ChatInterface({
   }
 
   /**
-   * Non-blocking background function to generate and set a new title
-   * for the chat, then dispatch "chat-updated".
+   * Background function to generate a new title after the first user–bot exchange.
    */
-  async function generateTitleInBackground(
-    chatIdForTitle: number,
-    userMessage: string,
-    botMessage: string
-  ) {
+  async function generateTitleInBackground(userMsg: string, botMsg: string) {
     try {
       const titleRes = await fetch("/api/title", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userMessage: userMessage + "\n\n" + botMessage }),
+        body: JSON.stringify({ userMessage: userMsg + "\n\n" + botMsg }),
       });
 
       if (!titleRes.ok) {
@@ -116,11 +110,9 @@ export default function ChatInterface({
       }
 
       const shortTitle = await titleRes.text();
-      await db.chats.update(chatIdForTitle, {
-        name: shortTitle,
-        updatedAt: new Date(),
-      });
-      // Notify sidebar that the chat name changed
+      // update Dexie
+      await db.chats.update(chatId, { name: shortTitle, updatedAt: new Date() });
+      // notify sidebar
       window.dispatchEvent(new Event("chat-updated"));
     } catch (error) {
       console.error("❌ Failed to generate chat title:", error);
@@ -128,35 +120,18 @@ export default function ChatInterface({
   }
 
   /**
-   * Called when user hits Enter (without Shift) or clicks Send.
-   * Streams the bot's reply, then *after* the first user–bot exchange
-   * is complete, we do a background call to the title API if needed.
+   * Send user message, stream bot reply, then do the post-first-message logic if needed.
    */
   async function handleSend() {
     const content = input.trim();
     if (!content) return;
     setInput("");
 
-    // If ephemeral => create Dexie chat
-    let currentChatId = chatId;
     const now = new Date();
-    if (currentChatId === null) {
-      currentChatId = await db.chats.add({
-        userId: session!.user!.email!,
-        name: defaultChatName, // e.g., "New Chat" or "Home Chat"
-        createdAt: now,
-        updatedAt: now,
-      });
-      setChatId(currentChatId);
-      setCurrentChatId(currentChatId);
-      window.dispatchEvent(new Event("chat-created"));
-    }
 
-    const chatIdForMessages = currentChatId as number;
-
-    // Save user message to Dexie
+    // Save user message
     const userMsgId = await db.chatMessages.add({
-      chatId: chatIdForMessages,
+      chatId,
       sender: "user",
       content,
       createdAt: now,
@@ -167,7 +142,7 @@ export default function ChatInterface({
       { id: userMsgId, sender: "user", content, createdAt: now },
     ]);
 
-    // Create one pending bot message
+    // Show pending bot message
     const tempId = `pending-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
@@ -175,7 +150,7 @@ export default function ChatInterface({
     ]);
 
     try {
-      // Combine all prior messages + new user message for the LLM prompt
+      // Combine conversation
       const allMessages = [
         ...messages,
         { sender: "user" as const, content, createdAt: now },
@@ -193,29 +168,25 @@ export default function ChatInterface({
       });
       if (!response.ok || !response.body) {
         console.error("❌ Stream error:", response.status);
-        // remove the pending bot message
+        // remove the pending
         setMessages((prev) => prev.slice(0, -1));
         return;
       }
 
-      // Stream text
-      const flushInterval = 50; // ms
       let lastFlushTime = Date.now();
       let partialContent = "";
-
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
         const chunk = decoder.decode(value, { stream: true });
         partialContent += chunk;
 
-        // Throttle UI updates
+        // Throttle
         const nowTime = Date.now();
-        if (nowTime - lastFlushTime >= flushInterval) {
+        if (nowTime - lastFlushTime >= 50) {
           setMessages((prev) => {
             const newMsgs = [...prev];
             const lastMsg = newMsgs[newMsgs.length - 1];
@@ -228,7 +199,7 @@ export default function ChatInterface({
         }
       }
 
-      // Final UI update
+      // Final update
       setMessages((prev) => {
         const newMsgs = [...prev];
         const lastMsg = newMsgs[newMsgs.length - 1];
@@ -241,7 +212,7 @@ export default function ChatInterface({
       // Save final bot message
       const botNow = new Date();
       const botMsgId = await db.chatMessages.add({
-        chatId: chatIdForMessages,
+        chatId,
         sender: "bot",
         content: partialContent,
         createdAt: botNow,
@@ -259,42 +230,33 @@ export default function ChatInterface({
         return newMsgs;
       });
 
-      await db.chats.update(chatIdForMessages, { updatedAt: botNow });
+      await db.chats.update(chatId, { updatedAt: botNow });
 
-      // If this is the FIRST user–bot exchange (i.e., 2 total messages so far),
-      // and the chat name is still a default placeholder, let's do a background
-      // title generation using both user + bot content.
+      // If this was the FIRST user–bot exchange (2 total messages in DB),
+      // and the chat name is "New Chat" (or another placeholder), let's generate a title.
       if (messages.length === 0) {
-        // Now we have exactly 2 messages: [userMsg, botMsg]
-        // Double-check the chat’s current name from Dexie
-        const chatRecord = await db.chats.get(chatIdForMessages);
-        if (chatRecord && chatRecord.name && isDefaultPlaceholder(chatRecord.name)) {
-          // Do NOT await to keep it non-blocking
-          generateTitleInBackground(chatIdForMessages, content, partialContent);
+        // We can re-check Dexie if you want, but we'll assume it's still "New Chat."
+        if (isPlaceholderName(chatName)) {
+          // Do NOT await => background
+          generateTitleInBackground(content, partialContent);
         }
       }
     } catch (err) {
       console.error("❌ Error streaming bot reply:", err);
-      // remove the pending bot message
+      // remove the pending
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       textareaRef.current?.focus();
     }
   }
 
-  /**
-   * Decide if a chat name is just a placeholder (like "New Chat" or "Home Chat")
-   */
-  function isDefaultPlaceholder(name: string) {
-    return (
-      name.trim().toLowerCase() === "new chat" ||
-      name.trim().toLowerCase() === "home chat"
-    );
+  function isPlaceholderName(name: string) {
+    const test = name.trim().toLowerCase();
+    return test === "new chat" || test === "home chat";
   }
 
   /**
-   * Called when user finishes editing a message in the conversation.
-   * After saving, we remove all subsequent messages and re-send to the AI.
+   * Editing flow: remove subsequent messages, re-send.
    */
   async function handleEditSubmit(messageId: number) {
     if (!editInput.trim()) return;
@@ -307,7 +269,7 @@ export default function ChatInterface({
         updatedAt: now,
       });
 
-      // Replace the content in our local state for that message
+      // Replace in local state
       const idx = messages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
       const messagesBeforeEdit = messages.slice(0, idx + 1).map((m) =>
@@ -315,50 +277,41 @@ export default function ChatInterface({
       );
       setMessages(messagesBeforeEdit);
 
-      // Turn off editing
       setEditingMessageId(null);
       setEditInput("");
 
-      // Remove subsequent messages from Dexie
-      if (chatId) {
-        const subsequent = await db.chatMessages
-          .where("chatId")
-          .equals(chatId)
-          .filter((msg) => msg.id! > messageId)
-          .toArray();
-        await Promise.all(
-          subsequent.map((msg) => db.chatMessages.delete(msg.id!))
-        );
-      }
+      // Remove subsequent messages
+      const subsequent = await db.chatMessages
+        .where("chatId")
+        .equals(chatId)
+        .filter((msg) => msg.id! > messageId)
+        .toArray();
+      await Promise.all(subsequent.map((msg) => db.chatMessages.delete(msg.id!)));
 
-      // Insert new pending bot message
+      // Insert new pending
       const tempId = `pending-edit-${Date.now()}`;
       setMessages((prev) => [
         ...messagesBeforeEdit,
         { tempId, sender: "bot", content: "", createdAt: new Date(), pending: true },
       ]);
 
-      // Re-send the conversation
+      // Re-send
       const allMessages = messagesBeforeEdit;
       const body = {
         messages: mapToApiMessages(allMessages),
         model: selectedModel,
       };
-
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-
       if (!response.ok || !response.body) {
         console.error("❌ Stream error (edit):", response.status);
-        // remove the pending
         setMessages((prev) => prev.slice(0, -1));
         return;
       }
 
-      // Stream
       let lastFlushTime = Date.now();
       let partialContent = "";
       const reader = response.body.getReader();
@@ -370,7 +323,6 @@ export default function ChatInterface({
         const chunk = decoder.decode(value, { stream: true });
         partialContent += chunk;
 
-        // Throttle
         const nowTime = Date.now();
         if (nowTime - lastFlushTime >= 50) {
           setMessages((prev) => {
@@ -382,40 +334,46 @@ export default function ChatInterface({
         }
       }
 
-      // Final update
+      // Final
       setMessages((prev) => {
         const newMsgs = [...prev];
         newMsgs[newMsgs.length - 1].content = partialContent;
         return newMsgs;
       });
 
-      // Save final bot message
-      if (chatId) {
-        const botNow = new Date();
-        const botMsgId = await db.chatMessages.add({
-          chatId,
+      // Save final
+      const botNow = new Date();
+      const botMsgId = await db.chatMessages.add({
+        chatId,
+        sender: "bot",
+        content: partialContent,
+        createdAt: botNow,
+        updatedAt: botNow,
+      });
+      setMessages((prev) => {
+        const newMsgs = [...prev];
+        newMsgs[newMsgs.length - 1] = {
+          id: botMsgId,
           sender: "bot",
           content: partialContent,
           createdAt: botNow,
-          updatedAt: botNow,
-        });
-        setMessages((prev) => {
-          const newMsgs = [...prev];
-          newMsgs[newMsgs.length - 1] = {
-            id: botMsgId,
-            sender: "bot",
-            content: partialContent,
-            createdAt: botNow,
-            pending: false,
-          };
-          return newMsgs;
-        });
+          pending: false,
+        };
+        return newMsgs;
+      });
 
-        await db.chats.update(chatId, { updatedAt: botNow });
-      }
+      await db.chats.update(chatId, { updatedAt: botNow });
     } catch (err) {
       console.error("❌ Error editing message:", err);
     }
+  }
+
+  if (!session?.user?.email) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p>Please sign in.</p>
+      </div>
+    );
   }
 
   if (loading) {
@@ -426,6 +384,15 @@ export default function ChatInterface({
     );
   }
 
+  if (!chatExists) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p className="text-sm text-muted-foreground">No such chat found.</p>
+      </div>
+    );
+  }
+
+  // Otherwise, we have a valid chat with messages
   return (
     <div className="flex flex-col h-full min-w-0 overflow-y-auto">
       <div className="relative flex flex-col min-h-full max-w-3xl mx-auto w-full min-w-0">
@@ -451,9 +418,7 @@ export default function ChatInterface({
                 />
               ))
             ) : (
-              <div className="text-sm text-muted-foreground">
-                Start the conversation by typing a message below.
-              </div>
+              <p className="text-sm text-muted-foreground">No messages yet.</p>
             )}
           </div>
         </div>
@@ -464,7 +429,10 @@ export default function ChatInterface({
             <div className="absolute right-8 top-2 flex items-center z-10">
               <Select value={selectedModel} onValueChange={setSelectedModel}>
                 <SelectTrigger className="h-8 px-3 text-xs shadow-none hover:text-primary border-none rounded-lg hover:scale-105 focus:ring-0 focus:ring-offset-0 focus-visible:ring-0 focus-visible:outline-none [&>span]:gap-3">
-                  <SelectValue className="text-right text-muted-foreground pr-4" placeholder="Model" />
+                  <SelectValue
+                    className="text-right text-muted-foreground pr-4"
+                    placeholder="Model"
+                  />
                 </SelectTrigger>
                 <SelectContent className="min-w-[100px] border border-input/20 bg-background/95 backdrop-blur-sm shadow-lg">
                   <SelectItem value="o3-mini-low" className="text-xs">
