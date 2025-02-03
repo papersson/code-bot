@@ -355,14 +355,14 @@ export default function Sidebar() {
       ) : (
         <Accordion
           type="multiple"
-          className="space-y-0.5 mb-2 [&>*]:border-none [&_[data-state]]:no-underline [&_button]:!p-0 [&_svg:last-child]:hidden"
+          className="space-y-0.5 mb-2 [&>*]:border-none [&_[data-state]]:no-underline [&_button]:!p-0"
         >
           {projects.map((proj) => {
             const chatsForProject = projectChats[proj.id!] || [];
             return (
               <AccordionItem key={proj.id} value={`project-${proj.id}`}>
                 <div className="flex items-center justify-between group">
-                  <AccordionTrigger className="text-sm p-0 flex-1 hover:no-underline data-[state=open]:text-accent-foreground [&[data-state=open]>div>svg:first-child]:rotate-90">
+                  <AccordionTrigger className="text-sm p-0 flex-1 hover:no-underline data-[state=open]:text-accent-foreground [&[data-state=open]>div>svg:first-child]:rotate-90 [&>svg]:hidden">
                     <div className="flex items-center gap-2 w-full pr-2 py-1.5 rounded-md transition-colors hover:bg-accent/20">
                       <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 text-muted-foreground" />
                       <Folder className="w-3.5 h-3.5 text-muted-foreground" />
