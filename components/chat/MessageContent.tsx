@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingDots } from "@/components/ui/loading-dots";
 import { MarkdownContent } from "./MarkdownContent";
 
 interface MessageContentProps {
@@ -28,7 +28,7 @@ export function MessageContent({ content, pending, sender }: MessageContentProps
   if (pending && !content) {
     return (
       <div className="flex items-center gap-2">
-        <Spinner size={16} className="text-muted-foreground" />
+        <LoadingDots size="small" className="text-muted-foreground" />
         <span className="text-muted-foreground">Thinking...</span>
       </div>
     );
@@ -39,7 +39,7 @@ export function MessageContent({ content, pending, sender }: MessageContentProps
     return (
       <div>
         <div className="mb-1 text-sm text-muted-foreground flex items-center gap-2">
-          <Spinner size={16} />
+          <LoadingDots size="small" />
           <span>Generating partial response...</span>
         </div>
         <MarkdownContent text={content} />
