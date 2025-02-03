@@ -92,9 +92,7 @@ function ChatItem({
       ) : (
         <div className="flex justify-between items-center w-full">
           <div className="flex-1 flex items-center gap-2">
-            <div className="p-1 rounded-full bg-blue-100/50 dark:bg-blue-900/20">
-              <MessageSquare className="w-3.5 h-3.5 shrink-0 text-blue-500/70" />
-            </div>
+            <MessageSquare className="w-3.5 h-3.5 shrink-0 text-blue-400 fill-current" />
             <Button
               asChild
               variant="ghost"
@@ -157,6 +155,10 @@ export default function Sidebar() {
   // Renaming
   const [renamingChatId, setRenamingChatId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
+  // Renaming project
+  const [renamingProjectId, setRenamingProjectId] = useState<number | null>(null);
+  const [projectRenameValue, setProjectRenameValue] = useState("");
 
   // Force re-render on event
   const [reloadKey, setReloadKey] = useState(0);
@@ -304,6 +306,24 @@ export default function Sidebar() {
     setReloadKey((prev) => prev + 1);
   }
 
+  // rename project
+  function startProjectRename(projectId: number, currentName: string) {
+    setRenamingProjectId(projectId);
+    setProjectRenameValue(currentName);
+  }
+  async function commitProjectRename(projectId: number) {
+    if (!projectRenameValue.trim()) return;
+    const now = new Date();
+    await db.projects.update(projectId, { name: projectRenameValue, updatedAt: now });
+    setRenamingProjectId(null);
+    setProjectRenameValue("");
+    setReloadKey((prev) => prev + 1);
+  }
+  function cancelProjectRename() {
+    setRenamingProjectId(null);
+    setProjectRenameValue("");
+  }
+
   return (
     <aside
       className={`
@@ -366,26 +386,69 @@ export default function Sidebar() {
             return (
               <AccordionItem key={proj.id} value={`project-${proj.id}`}>
                 <div className="flex items-center justify-between group">
-                  <AccordionTrigger className="text-sm p-0 flex-1 hover:no-underline data-[state=open]:text-accent-foreground [&[data-state=open]>div>svg:first-child]:rotate-90 [&>svg]:hidden">
-                    <div className="flex items-center gap-2 w-full pr-2 py-1.5 rounded-lg transition-colors hover:bg-accent/20">
-                      <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 text-muted-foreground" />
-                      <div className="p-1 rounded-full bg-amber-100/50 dark:bg-amber-900/20">
-                        <Folder className="w-3.5 h-3.5 text-amber-500/70" />
+                  <AccordionTrigger className="text-sm p-0 flex-1 hover:no-underline data-[state=open]:text-accent-foreground [&>svg]:hidden">
+                    {renamingProjectId === proj.id ? (
+                      <div className="flex-1 flex items-center gap-2">
+                        <Input
+                          value={projectRenameValue}
+                          onChange={(e) => setProjectRenameValue(e.target.value)}
+                          className="h-8 rounded-lg"
+                        />
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => commitProjectRename(proj.id!)}
+                          className="rounded-lg"
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={cancelProjectRename}
+                          className="rounded-lg"
+                        >
+                          Cancel
+                        </Button>
                       </div>
-                      <span className="truncate">{proj.name}</span>
-                    </div>
+                    ) : (
+                      <div className="flex items-center w-full pr-2 py-1.5 rounded-lg transition-colors hover:bg-accent/20">
+                        <div className="flex-1 flex items-center gap-2.5 min-w-0">
+                          <Folder className="w-[15px] h-[15px] shrink-0 text-amber-400/90 fill-current transition-all duration-200 
+                            group-hover:text-amber-500/90 
+                            group-[[data-state=open]]:text-amber-500/90 
+                            group-[[data-state=open]]:scale-110" />
+                          <span className="truncate font-medium text-[13px]">{proj.name}</span>
+                        </div>
+                      </div>
+                    )}
                   </AccordionTrigger>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteProject(proj.id!);
-                    }}
-                  >
-                    <X className="w-3.5 h-3.5 text-red-500 hover:text-red-600" />
-                  </Button>
+                  {!renamingProjectId && (
+                    <div className="flex gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 hover:bg-accent/50 rounded-lg"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          startProjectRename(proj.id!, proj.name);
+                        }}
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteProject(proj.id!);
+                        }}
+                      >
+                        <X className="w-3.5 h-3.5 text-red-500 hover:text-red-600" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 <AccordionContent className="pl-4 relative">
                   <div className="absolute left-[11px] top-0 bottom-2 w-px bg-border" />
