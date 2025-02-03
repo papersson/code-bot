@@ -1,14 +1,13 @@
-// db/drizzle.ts (server-side usage)
-import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "./schema";
 
+// Create a connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-export const dbRemote = drizzle(pool, { schema });
+// Drizzle connection
+export const dbNode = drizzle(pool, { schema });
 
-// Run migrations, if you want to do so at startup
-// await migrate(dbRemote, { migrationsFolder: 'drizzle' });
+// Now you can `import { dbNode } from "@/db/drizzle";` in your sync route

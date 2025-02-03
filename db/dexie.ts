@@ -1,4 +1,3 @@
-// db/dexie.ts
 "use client";
 
 import Dexie, { Table } from "dexie";
@@ -6,11 +5,15 @@ import Dexie, { Table } from "dexie";
 export interface Chat {
   id?: number;
   userId: string;
-  name?: string;                      // <-- New: name/title for the chat
-  projectId?: number | null;         
+  name?: string;
+  projectId?: number | null;
   projectDescriptionId?: number | null;
   createdAt?: Date;
   updatedAt?: Date;
+
+  // For syncing:
+  syncedAt?: Date | null;
+  deleted?: boolean;
 }
 
 export interface ChatMessage {
@@ -20,6 +23,10 @@ export interface ChatMessage {
   content: string;
   createdAt?: Date;
   updatedAt?: Date;
+
+  // For syncing:
+  syncedAt?: Date | null;
+  deleted?: boolean;
 }
 
 export interface Project {
@@ -28,6 +35,9 @@ export interface Project {
   description?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
+
+  syncedAt?: Date | null;
+  deleted?: boolean;
 }
 
 export interface ProjectDescription {
@@ -37,6 +47,9 @@ export interface ProjectDescription {
   metadata?: string;
   createdAt?: Date;
   updatedAt?: Date;
+
+  syncedAt?: Date | null;
+  deleted?: boolean;
 }
 
 class LocalDB extends Dexie {
@@ -48,15 +61,13 @@ class LocalDB extends Dexie {
   constructor() {
     super("LocalFirstChatDB");
 
-    this.version(1).stores({
-      chats:
-        "++id, userId, projectId, projectDescriptionId", 
-      chatMessages:
-        "++id, chatId, sender",
-      projects:
-        "++id, name",
-      projectDescriptions:
-        "++id, language"
+    // If you want to add new indexes for your new fields, you can do so here.
+    // The simplest is just to keep the default store definitions.
+    this.version(2).stores({
+      chats: "++id, userId, projectId",
+      chatMessages: "++id, chatId, sender",
+      projects: "++id, name",
+      projectDescriptions: "++id, language",
     });
   }
 }

@@ -23,7 +23,7 @@ interface Props {
 
 /**
  * Main chat component: No ephemeral logic.
- * If we can’t find the chat in Dexie, we show a "Not found" message.
+ * If we can't find the chat in Dexie, we show a "Not found" message.
  * Otherwise, we handle the streaming plus post-first-message title generation.
  */
 export default function ChatInterface({
@@ -290,7 +290,7 @@ export default function ChatInterface({
 
       // Insert new pending
       const tempId = `pending-edit-${Date.now()}`;
-      setMessages((prev) => [
+      setMessages([
         ...messagesBeforeEdit,
         { tempId, sender: "bot", content: "", createdAt: new Date(), pending: true },
       ]);

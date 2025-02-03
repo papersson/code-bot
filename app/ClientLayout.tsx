@@ -4,7 +4,6 @@ import React from "react";
 import { SessionProvider } from "next-auth/react";
 import { SidebarProvider, useSidebar } from "@/hooks/useSidebar";
 import Sidebar from "@/components/Sidebar";
-import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -59,8 +58,6 @@ function Shell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
-
-      <ServiceWorkerRegistration />
     </div>
   );
 }
