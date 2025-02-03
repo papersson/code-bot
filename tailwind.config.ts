@@ -17,6 +17,18 @@ export default {
   				DEFAULT: '#3E6FCA',
   				hover: '#345DB0',
   			},
+  			chat: {
+  				user: {
+  					DEFAULT: 'hsl(150 15% 50%)',
+  					foreground: 'hsl(150 10% 98%)',
+  					icon: 'hsl(150 20% 45%)',
+  					background: 'hsl(150 20% 97%)',
+  				},
+  				bot: {
+  					DEFAULT: 'hsl(var(--background))',
+  					foreground: 'hsl(var(--foreground))',
+  				}
+  			},
   			card: {
   				DEFAULT: 'hsl(var(--card))',
   				foreground: 'hsl(var(--card-foreground))'
