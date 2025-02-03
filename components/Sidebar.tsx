@@ -19,10 +19,118 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from "@/components/ui/accordion";
+import { Separator } from "@/components/ui/separator";
 
 // Lucide icons
-import { Plus, Folder, Pencil, X, LogIn, LogOut } from "lucide-react";
+import { Plus, Folder, Pencil, X, LogIn, LogOut, MessageSquare, ChevronRight } from "lucide-react";
+
+interface ChatItemProps {
+  chat: Chat;
+  active: boolean;
+  onRename: (chatId: number, currentName: string) => void;
+  onDelete: (chatId: number) => void;
+  renamingChatId: number | null;
+  renameValue: string;
+  setRenameValue: (value: string) => void;
+  commitRename: (chatId: number) => void;
+  cancelRename: () => void;
+  onDragStart: (e: React.DragEvent<HTMLDivElement>, chat: Chat) => void;
+}
+
+function ChatItem({
+  chat,
+  active,
+  onRename,
+  onDelete,
+  renamingChatId,
+  renameValue,
+  setRenameValue,
+  commitRename,
+  cancelRename,
+  onDragStart,
+}: ChatItemProps) {
+  return (
+    <div
+      draggable
+      onDragStart={(e) => onDragStart(e, chat)}
+      className={`
+        group flex items-center rounded-md px-2 py-1.5
+        cursor-grab transition-all duration-200
+        ${active ? "bg-accent text-accent-foreground shadow-sm" : "hover:bg-accent/20"}
+      `}
+    >
+      {renamingChatId === chat.id ? (
+        <div className="flex-1 flex items-center gap-2">
+          <Input
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            className="h-8"
+          />
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => commitRename(chat.id!)}
+          >
+            Save
+          </Button>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={cancelRename}
+          >
+            Cancel
+          </Button>
+        </div>
+      ) : (
+        <div className="flex justify-between items-center w-full">
+          <div className="flex-1 flex items-center gap-2">
+            <MessageSquare className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />
+            <Button
+              asChild
+              variant="ghost"
+              className={`
+                px-2 py-0 flex-1 text-left justify-start h-auto
+                ${active ? "hover:bg-accent/90" : "hover:bg-accent/30"}
+                transition-colors duration-200
+              `}
+            >
+              <Link
+                href={`/chats/${chat.id}`}
+                className="text-sm overflow-hidden text-ellipsis whitespace-nowrap"
+              >
+                {chat.name || `Chat #${chat.id}`}
+              </Link>
+            </Button>
+          </div>
+          <div className="flex gap-1 ml-2 opacity-0 group-hover:opacity-100 transition-all duration-200">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 hover:bg-accent/50"
+              onClick={() => onRename(chat.id!, chat.name || `Chat #${chat.id}`)}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0 hover:bg-red-100 dark:hover:bg-red-900/30"
+              onClick={() => onDelete(chat.id!)}
+            >
+              <X className="w-3.5 h-3.5 text-red-500 hover:text-red-600" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Sidebar() {
   const { data: session } = useSession();
@@ -49,17 +157,17 @@ export default function Sidebar() {
   // Force re-render on event
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Load data from Dexie
   useEffect(() => {
     if (!userEmail) return;
 
     async function loadData() {
-      const allChats = await db.chats.where("userId").equals(userEmail as string).toArray();
+      const allChats = await db.chats
+        .where("userId")
+        .equals(userEmail as string)
+        .toArray();
 
       // separate unassigned from assigned
-      const unassigned = allChats
-        .filter((c) => !c.projectId)
-        .sort(sortByRecent);
+      const unassigned = allChats.filter((c) => !c.projectId).sort(sortByRecent);
       setRecentChats(unassigned);
 
       // group by project
@@ -85,7 +193,6 @@ export default function Sidebar() {
   // Listen for "chat-created" event
   useEffect(() => {
     function handleChatCreated() {
-      // Simply increment reloadKey => triggers re-fetch
       setReloadKey((prev) => prev + 1);
     }
     window.addEventListener("chat-created", handleChatCreated);
@@ -103,7 +210,7 @@ export default function Sidebar() {
   // If not signed in
   if (!session) {
     return (
-      <aside className="w-72 bg-secondary text-secondary-foreground p-4 flex flex-col overflow-y-auto">
+      <aside className="w-72 bg-sidebar text-sidebar-foreground p-4 flex flex-col overflow-y-auto border-r border-sidebar-border">
         <p className="mb-4">Please sign in to view chats.</p>
         <Button onClick={() => signIn()} className="p-2">
           <LogIn className="w-4 h-4" />
@@ -194,25 +301,32 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className={`
-      w-72 bg-secondary text-secondary-foreground p-4 
-      flex flex-col overflow-y-auto
-      transition-[width,opacity,transform] duration-200 ease-in-out
-      ${isOpen ? 'translate-x-0 opacity-100' : '-translate-x-full opacity-0 w-0'}
-    `}>
-      {/* PROJECTS */}
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="font-bold text-sm">Projects</h2>
+    <aside
+      className={`
+        flex flex-col overflow-y-auto
+         text-sidebar-foreground
+        p-3 w-72
+        transition-[width,opacity,transform] duration-200 ease-in-out
+        ${isOpen ? "translate-x-0 opacity-100" : "-translate-x-full opacity-0 w-0"}
+      `}
+    >
+      {/* PROJECTS header */}
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+          Projects
+        </h2>
         <Dialog open={openProjectDialog} onOpenChange={setOpenProjectDialog}>
           <DialogTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-7 w-7">
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
               <Plus className="w-3.5 h-3.5" />
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create a new project</DialogTitle>
-              <DialogDescription>Give it a name, e.g. &quot;Mobile App.&quot;</DialogDescription>
+              <DialogDescription>
+                Give it a name, e.g. &quot;Mobile App.&quot;
+              </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <Input
@@ -222,7 +336,10 @@ export default function Sidebar() {
               />
             </div>
             <DialogFooter>
-              <Button variant="secondary" onClick={() => setOpenProjectDialog(false)}>
+              <Button
+                variant="secondary"
+                onClick={() => setOpenProjectDialog(false)}
+              >
                 Cancel
               </Button>
               <Button onClick={createProject}>Create</Button>
@@ -230,28 +347,32 @@ export default function Sidebar() {
           </DialogContent>
         </Dialog>
       </div>
+
       {projects.length === 0 ? (
-        <p className="text-xs text-muted-foreground mb-2">No projects yet.</p>
+        <p className="text-xs text-muted-foreground mb-2">
+          No projects yet.
+        </p>
       ) : (
         <Accordion
           type="multiple"
-          className="space-y-0.5 mb-2 [&>*]:border-none"
+          className="space-y-0.5 mb-2 [&>*]:border-none [&_[data-state]]:no-underline [&_button]:!p-0 [&_svg:last-child]:hidden"
         >
           {projects.map((proj) => {
             const chatsForProject = projectChats[proj.id!] || [];
             return (
               <AccordionItem key={proj.id} value={`project-${proj.id}`}>
                 <div className="flex items-center justify-between group">
-                  <AccordionTrigger className="text-sm hover:no-underline flex-1 pr-2">
-                    <div className="flex items-center gap-2">
-                      <Folder className="w-3.5 h-3.5" />
-                      {proj.name}
+                  <AccordionTrigger className="text-sm p-0 flex-1 hover:no-underline data-[state=open]:text-accent-foreground [&[data-state=open]>div>svg:first-child]:rotate-90">
+                    <div className="flex items-center gap-2 w-full pr-2 py-1.5 rounded-md transition-colors hover:bg-accent/20">
+                      <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 text-muted-foreground" />
+                      <Folder className="w-3.5 h-3.5 text-muted-foreground" />
+                      <span className="truncate">{proj.name}</span>
                     </div>
                   </AccordionTrigger>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={(e) => {
                       e.stopPropagation();
                       deleteProject(proj.id!);
@@ -260,92 +381,33 @@ export default function Sidebar() {
                     <X className="w-3.5 h-3.5 text-red-500 hover:text-red-600" />
                   </Button>
                 </div>
-                <AccordionContent>
+                <AccordionContent className="pl-4 relative">
+                  <div className="absolute left-[11px] top-0 bottom-2 w-px bg-border" />
                   <div
-                    className="mt-1"
+                    className="mt-1 relative"
                     onDragOver={onDragOverProject}
                     onDrop={(e) => onDropProject(e, proj.id!)}
                   >
                     {chatsForProject.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-muted-foreground pl-2">
                         (No chats in this project)
                       </p>
                     ) : (
-                      chatsForProject.map((chat) => {
-                        const active = chat.id === currentChatId;
-                        return (
-                          <div
-                            key={chat.id}
-                            draggable
-                            onDragStart={(evt) => onDragStartChat(evt, chat)}
-                            className={`group flex items-center rounded px-2 py-1
-                              ${active ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"}
-                            `}
-                          >
-                            {renamingChatId === chat.id ? (
-                              <div className="flex-1 flex items-center gap-2">
-                                <Input
-                                  value={renameValue}
-                                  onChange={(e) => setRenameValue(e.target.value)}
-                                  className="h-8"
-                                />
-                                <Button
-                                  variant="secondary"
-                                  size="sm"
-                                  onClick={() => commitRename(chat.id!)}
-                                >
-                                  Save
-                                </Button>
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={cancelRename}
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            ) : (
-                              <div className="flex justify-between items-center w-full">
-                                <Button
-                                  asChild
-                                  variant="ghost"
-                                  className="px-0 py-0 flex-1 text-left justify-start"
-                                >
-                                  <Link
-                                    href={`/chats/${chat.id}`}
-                                    className="text-sm overflow-hidden text-ellipsis whitespace-nowrap"
-                                  >
-                                    {chat.name || `Chat #${chat.id}`}
-                                  </Link>
-                                </Button>
-                                <div className="flex gap-0.5 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7"
-                                    onClick={() =>
-                                      startRename(
-                                        chat.id!,
-                                        chat.name || `Chat #${chat.id}`
-                                      )
-                                    }
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-7 w-7"
-                                    onClick={() => deleteChat(chat.id!)}
-                                  >
-                                    <X className="w-3.5 h-3.5 text-red-500 hover:text-red-600" />
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })
+                      chatsForProject.map((chat) => (
+                        <ChatItem
+                          key={chat.id}
+                          chat={chat}
+                          active={chat.id === currentChatId}
+                          onRename={startRename}
+                          onDelete={deleteChat}
+                          renamingChatId={renamingChatId}
+                          renameValue={renameValue}
+                          setRenameValue={setRenameValue}
+                          commitRename={commitRename}
+                          cancelRename={cancelRename}
+                          onDragStart={onDragStartChat}
+                        />
+                      ))
                     )}
                   </div>
                 </AccordionContent>
@@ -355,94 +417,51 @@ export default function Sidebar() {
         </Accordion>
       )}
 
-      {/* CHATS */}
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="font-bold text-sm">Chats</h2>
-        <Button variant="ghost" size="sm" className="h-7 w-7" onClick={handleNewChat}>
+      {/* Separator between Projects and Chats */}
+      <Separator className="my-3" />
+
+      {/* CHATS header */}
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+          Chats
+        </h2>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          onClick={handleNewChat}
+        >
           <Plus className="w-3.5 h-3.5" />
         </Button>
       </div>
+
       <div className="space-y-0.5">
         {recentChats.length === 0 ? (
           <p className="text-xs text-muted-foreground">No unassigned chats.</p>
         ) : (
-          recentChats.map((chat) => {
-            const active = chat.id === currentChatId;
-            return (
-              <div
-                key={chat.id}
-                draggable
-                onDragStart={(evt) => onDragStartChat(evt, chat)}
-                className={`group flex items-center rounded px-2 py-1 cursor-grab
-                  ${active ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"}
-                `}
-              >
-                {renamingChatId === chat.id ? (
-                  <div className="flex-1 flex items-center gap-2">
-                    <Input
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      className="h-8"
-                    />
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => commitRename(chat.id!)}
-                    >
-                      Save
-                    </Button>
-                    <Button variant="destructive" size="sm" onClick={cancelRename}>
-                      Cancel
-                    </Button>
-                  </div>
-                ) : (
-                  <div className="flex justify-between items-center w-full">
-                    <Button
-                      asChild
-                      variant="ghost"
-                      className="px-0 py-0 flex-1 text-left justify-start"
-                    >
-                      <Link
-                        href={`/chats/${chat.id}`}
-                        className="text-sm overflow-hidden text-ellipsis whitespace-nowrap"
-                      >
-                        {chat.name || `Chat #${chat.id}`}
-                      </Link>
-                    </Button>
-                    <div className="flex gap-0.5 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7"
-                        onClick={() =>
-                          startRename(
-                            chat.id!,
-                            chat.name || `Chat #${chat.id}`
-                          )
-                        }
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7"
-                        onClick={() => deleteChat(chat.id!)}
-                      >
-                        <X className="w-3.5 h-3.5 text-red-500 hover:text-red-600" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            );
-          })
+          recentChats.map((chat) => (
+            <ChatItem
+              key={chat.id}
+              chat={chat}
+              active={chat.id === currentChatId}
+              onRename={startRename}
+              onDelete={deleteChat}
+              renamingChatId={renamingChatId}
+              renameValue={renameValue}
+              setRenameValue={setRenameValue}
+              commitRename={commitRename}
+              cancelRename={cancelRename}
+              onDragStart={onDragStartChat}
+            />
+          ))
         )}
       </div>
 
-      {/* FOOTER: sign out => icon only */}
+      {/* FOOTER */}
       <div className="mt-auto pt-4 border-t border-muted-foreground flex items-center justify-between">
-        <span className="text-sm">Signed in as {session.user?.email}</span>
+        <span className="text-xs text-muted-foreground">
+          Signed in as {session.user?.email}
+        </span>
         <Button
           variant="outline"
           size="sm"
