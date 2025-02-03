@@ -99,7 +99,20 @@ export default {
   				to: {
   					height: '0'
   				}
-  			}
+  			},
+        'loading-dot': {
+          '0%': {
+            opacity: '0.2',
+          },
+          '20%': {
+            opacity: '1',
+            transform: 'translateY(-1px)',
+          },
+          '100%': {
+            opacity: '0.2',
+            transform: 'translateY(0)',
+          },
+        }
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',

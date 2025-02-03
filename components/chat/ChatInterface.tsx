@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import { useSidebar } from "@/hooks/useSidebar";
 import { db } from "@/db/dexie";
 import { Textarea } from "@/components/ui/textarea";
-import { Spinner } from "@/components/ui/spinner";
+import { LoadingDots } from "@/components/ui/loading-dots";
 import {
   Select,
   SelectContent,
@@ -379,7 +379,7 @@ export default function ChatInterface({
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Spinner size={24} className="text-muted-foreground" />
+        <LoadingDots size="large" className="text-muted-foreground" />
       </div>
     );
   }

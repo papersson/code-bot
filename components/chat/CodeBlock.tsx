@@ -16,7 +16,13 @@ export function CodeBlock({ language, value, className }: CodeBlockProps) {
 
   useEffect(() => {
     if (language) {
-      setHighlightedCode(hljs.highlight(value, { language }).value);
+      try {
+        const result = hljs.highlight(value, { language });
+        setHighlightedCode(result.value);
+      } catch (error) {
+        console.warn(`Failed to highlight code for language: ${language}`);
+        setHighlightedCode(value);
+      }
     } else {
       setHighlightedCode(value);
     }
