@@ -13,7 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area"; // from shadcn
+import {
+  ScrollArea,
+  ScrollAreaViewport,
+} from "@/components/ui/scroll-area"; // from shadcn
 import { EphemeralMessage } from "./types";
 import { ChatMessageItem } from "./ChatMessageItem";
 
@@ -29,8 +32,8 @@ export default function ChatInterface({
   const { data: session } = useSession();
   const { setCurrentChatId } = useSidebar();
 
-  // We'll auto-scroll to this at the bottom of message list
-  const endOfMessagesRef = useRef<HTMLDivElement | null>(null);
+  // We'll track a ref to the scrollable container
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null);
 
   // Dexie & local state
   const [chatId] = useState<number>(initialChatId);
@@ -49,9 +52,8 @@ export default function ChatInterface({
   const [chatExists, setChatExists] = useState(true);
   const [chatName, setChatName] = useState(defaultChatName);
 
-  useEffect(() => {
-    endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  // Show a "scroll down" button if user is not near bottom
+  const [showScrollDownButton, setShowScrollDownButton] = useState(false);
 
   useEffect(() => {
     if (!session?.user?.email) {
@@ -350,6 +352,22 @@ export default function ChatInterface({
     return test === "new chat" || test === "home chat";
   }
 
+  function handleScroll(e: React.UIEvent<HTMLDivElement>) {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+    // If we're more than 20px from the bottom, show the "scroll down" button
+    setShowScrollDownButton(distanceFromBottom > 20);
+  }
+
+  function scrollToBottom() {
+    if (scrollViewportRef.current) {
+      scrollViewportRef.current.scrollTo({
+        top: scrollViewportRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
+  }
+
   if (!session?.user?.email) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -377,47 +395,56 @@ export default function ChatInterface({
   // === Layout ===
   return (
     <div className="flex flex-col h-full w-full overflow-hidden">
-      {/* 
-        This ScrollArea is the entire vertical region, minus the input at bottom.
-        So the scrollbar will appear on the far right.
-      */}
       <ScrollArea className="flex-1 w-full">
-        {/* 
-          Your main chat content can be centered via max-w-3xl, 
-          but the scrollbar stays at the container's right edge.
-        */}
-        <div className="relative mx-auto max-w-3xl w-full min-w-0 px-4 pt-8">
-          {messages.length > 0 ? (
-            messages.map((msg) => (
-              <ChatMessageItem
-                key={msg.id || msg.tempId}
-                message={msg}
-                isEditing={editingMessageId === msg.id}
-                editInput={editInput}
-                onChangeEditInput={setEditInput}
-                onStartEditing={(id) => {
-                  setEditingMessageId(id);
-                  setEditInput(msg.content);
-                }}
-                onCancelEditing={() => {
-                  setEditingMessageId(null);
-                  setEditInput("");
-                }}
-                onSubmitEdit={handleEditSubmit}
-              />
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">No messages yet.</p>
-          )}
+        <ScrollAreaViewport
+          ref={scrollViewportRef}
+          onScroll={handleScroll}
+          className="w-full h-full"
+        >
+          <div className="relative mx-auto max-w-3xl w-full min-w-0 px-4 pt-8">
+            {messages.length > 0 ? (
+              messages.map((msg) => (
+                <ChatMessageItem
+                  key={msg.id || msg.tempId}
+                  message={msg}
+                  isEditing={editingMessageId === msg.id}
+                  editInput={editInput}
+                  onChangeEditInput={setEditInput}
+                  onStartEditing={(id) => {
+                    setEditingMessageId(id);
+                    setEditInput(msg.content);
+                  }}
+                  onCancelEditing={() => {
+                    setEditingMessageId(null);
+                    setEditInput("");
+                  }}
+                  onSubmitEdit={handleEditSubmit}
+                />
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No messages yet.</p>
+            )}
 
-          {/* Marker div for auto-scroll */}
-          <div ref={endOfMessagesRef} />
-        </div>
+            {/* Show a down-arrow button if there's hidden content below */}
+            {showScrollDownButton && (
+              <button
+                onClick={scrollToBottom}
+                className="bg-background border border-border rounded-full p-2 text-sm
+                           flex items-center justify-center
+                           hover:bg-muted-foreground/10
+                           shadow-md
+                           absolute right-4 bottom-4"
+                aria-label="Scroll to bottom"
+              >
+                ↓
+              </button>
+            )}
+          </div>
+        </ScrollAreaViewport>
       </ScrollArea>
 
       {/* Sticky input row at bottom */}
       <div className="sticky bottom-0 left-0 right-0 bg-background-main z-50">
-        {/* Put the input + model select in the same container width */}
         <div className="relative max-w-3xl mx-auto w-full px-4">
           <div className="absolute right-8 flex items-center z-10">
             <Select value={selectedModel} onValueChange={setSelectedModel}>
